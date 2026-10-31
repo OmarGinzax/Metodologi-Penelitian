@@ -1,1 +1,0 @@
-# Metodologi-Penelitian
