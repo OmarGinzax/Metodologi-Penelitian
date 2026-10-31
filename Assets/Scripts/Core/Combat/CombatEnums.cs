@@ -77,6 +77,21 @@ namespace RPGStrategy.Core.Combat
         DecoyActive         // Seluruh musuh wajib menarget aktor ini
     }
 
+    /// <summary>
+    /// Kategori skill untuk pengelompokan dan penampilan UI.
+    /// Tidak digunakan sebagai pembatas strategi LLM — hanya untuk klasifikasi data.
+    /// </summary>
+    public enum SkillCategory
+    {
+        PhysicalDamage,    // Serangan fisik langsung
+        MagicDamage,       // Serangan sihir / energi
+        Support,           // Buff, heal, pulihkan rekan
+        Debuff,            // Lemah / nerf target musuh
+        Tactical,          // Gerakan taktis militer (suppression, flanking, overwatch)
+        Psychological,     // Aksi emosional dan psikologis (plea, intimidate, rally)
+        Utility            // Aksi serbaguna (tosItem, carry, decoy)
+    }
+
     public enum BattleState
     {
         Uninitialized,

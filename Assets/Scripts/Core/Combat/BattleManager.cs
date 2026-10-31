@@ -429,7 +429,7 @@ namespace RPGStrategy.Core.Combat
                 if (!actor.ConsumeMP(skill.MPCost)) return ActionExecutionResult.CreateFailure(actor.EntityId, actionId, targetId, "Insufficient MP.");
                 actor.SetSkillCooldown(skill.SkillId, skill.BaseCooldown);
 
-                if (skill.Category == SkillCategory.Healing)
+                if (skill.Category == SkillCategory.Support)
                 {
                     var target = FindEntity(targetId) ?? actor;
                     int healAmount = Mathf.RoundToInt(actor.Stats.AttackPower * (skill.PowerMultiplierPercent / 100f));
