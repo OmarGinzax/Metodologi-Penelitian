@@ -13,9 +13,13 @@ Seluruh detail teknis, arsitektur kelas, pipeline data, dan formula matematis te
 
 | Milestone | Topik & Modul | Dokumen Spesifikasi Teknis | Status |
 | :---: | :--- | :--- | :---: |
+| **M0-GDD** | Game Design Document & Post-Apocalyptic Worldbuilding | [**`game_design_document_gdd.md`**](file:///c:/Ginza/Github/Metodologi-Penelitian/implementation%20plan/game_design_document_gdd.md) | Selesai Diimplementasikan |
 | **M1** | Master Architecture & Variable Alignment | [**`master_implementation_plan.md`**](file:///c:/Ginza/Github/Metodologi-Penelitian/implementation%20plan/master_implementation_plan.md) | Selesai |
-| **M2** | Core Combat Engine & State Extractor | [**`core_combat_and_extractor.md`**](file:///c:/Ginza/Github/Metodologi-Penelitian/implementation%20plan/core_combat_and_extractor.md) | Selesai |
-| **M3** | Baseline HFSM Agent Architecture | [**`hfsm_agent_architecture.md`**](file:///c:/Ginza/Github/Metodologi-Penelitian/implementation%20plan/hfsm_agent_architecture.md) | Selesai |
+| **M2** | Core Combat Engine & State Extractor | [**`core_combat_and_extractor.md`**](file:///c:/Ginza/Github/Metodologi-Penelitian/implementation%20plan/core_combat_and_extractor.md) | Selesai Diimplementasikan |
+| **M2-Ext1** | Human & Psychological Action Expansion | [**`expressive_actions_and_skills_expansion.md`**](file:///c:/Ginza/Github/Metodologi-Penelitian/implementation%20plan/expressive_actions_and_skills_expansion.md) | Selesai Diimplementasikan |
+| **M2-Ext2** | Psychological Morale & Relationship System | [**`psychological_morale_and_relationship_system.md`**](file:///c:/Ginza/Github/Metodologi-Penelitian/implementation%20plan/psychological_morale_and_relationship_system.md) | Selesai Diimplementasikan |
+| **M2-Ext3** | Trait Evolution & Tactical Command System | [**`trait_evolution_and_tactical_command_system.md`**](file:///c:/Ginza/Github/Metodologi-Penelitian/implementation%20plan/trait_evolution_and_tactical_command_system.md) | Selesai Diimplementasikan |
+| **M3** | Baseline HFSM Agent Architecture | [**`hfsm_agent_architecture.md`**](file:///c:/Ginza/Github/Metodologi-Penelitian/implementation%20plan/hfsm_agent_architecture.md) | Siap Diimplementasikan |
 | **M4** | LLM Service & Pure LLM Agent | [**`milestone_4_llm_service_and_pure_llm.md`**](file:///c:/Ginza/Github/Metodologi-Penelitian/implementation%20plan/milestone_4_llm_service_and_pure_llm.md) | Selesai |
 | **M5** | Action Validator & Hybrid Agent Controller | [**`milestone_5_action_validator_and_hybrid_agent.md`**](file:///c:/Ginza/Github/Metodologi-Penelitian/implementation%20plan/milestone_5_action_validator_and_hybrid_agent.md) | Selesai |
 | **M6** | Trait System & Context Compression | [**`milestone_6_trait_system_and_context_compression.md`**](file:///c:/Ginza/Github/Metodologi-Penelitian/implementation%20plan/milestone_6_trait_system_and_context_compression.md) | Selesai |
