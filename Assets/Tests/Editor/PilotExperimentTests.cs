@@ -103,20 +103,22 @@ namespace RPGStrategy.Tests
             var all = new List<CombatEntity> { actor, ally, enemy };
             var snapshot = MakeSnapshot(actor, all);
 
-            // Try to use a skill that costs MP
-            var decision = new AgentDecision("p1", "SuppressionFire", "e1", "Suppressing the drone", "OBEY", "Suppression fire!");
+            // Add an action requiring MP to snapshot to test H4 detection
+            snapshot.AvailableActions.Add(new AvailableActionDTO
+            {
+                ActionId = "HeavyStrike",
+                ActionName = "Heavy Strike",
+                ActionType = ActionType.CastSkill.ToString(),
+                MPCost = 15,
+                Scope = "SingleEnemy"
+            });
+
+            var decision = new AgentDecision("p1", "HeavyStrike", "e1", "Heavy attack", "OBEY", "Striking!");
             var result = ActionValidator.Validate(snapshot, decision);
 
-            // SuppressionFire costs MP; actor has 0 MP
-            if (!result.IsValid)
-            {
-                Assert.AreEqual(HallucinationType.H4_ResourceExhaustion, result.HallucinationCode, "MP exhaustion should be classified H4.");
-            }
-            else
-            {
-                // If action is legal at 0 MP (free action), test passes — system correctly determined legality
-                Assert.IsTrue(result.IsValid);
-            }
+            // HeavyStrike costs 15 MP; actor has 0 MP
+            Assert.IsFalse(result.IsValid);
+            Assert.AreEqual(HallucinationType.H4_ResourceExhaustion, result.HallucinationCode, "MP exhaustion should be classified H4.");
         }
 
         // ─── TC_PILOT_04: Proximity Violation for CarryWounded (H5) ──────────────
@@ -208,7 +210,7 @@ namespace RPGStrategy.Tests
             var freqMap = new Dictionary<string, int>
             {
                 { "BasicAttack", 10 },
-                { "SuppressionFire", 10 },
+                { "Overwatch", 10 },
                 { "Action_Defend", 10 },
                 { "CarryWounded", 10 }
             };

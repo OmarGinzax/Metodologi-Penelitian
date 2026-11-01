@@ -120,16 +120,7 @@ namespace RPGStrategy.AI.Baseline
                     $"Eliminating target {executeTarget.Name} now!");
             }
 
-            // 2. Cek Suppression Fire jika ada musuh ancaman tinggi dan aksi tersedia
-            var highThreat = livingEnemies.OrderByDescending(e => e.AttackPower).First();
-            if (snapshot.IsActionAvailable("SuppressionFire"))
-            {
-                return new AgentDecision(actor.EntityId, "SuppressionFire", highThreat.EntityId, 
-                    $"Offensive tactical: Suppressing high threat {highThreat.Name}.", "OBEY", 
-                    $"Suppressing {highThreat.Name}! Move up!");
-            }
-
-            // 3. Flank Maneuver jika tersedia
+            // 2. Flank Maneuver jika tersedia
             if (snapshot.IsActionAvailable("FlankManeuver"))
             {
                 var flankTarget = livingEnemies.OrderBy(e => e.CurrentHP).First();

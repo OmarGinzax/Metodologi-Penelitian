@@ -148,7 +148,7 @@ namespace RPGStrategy.Tests
         }
 
         [Test]
-        public void TC_CORE_06_SuppressionFire_AppliesSuppressedStatus()
+        public void TC_CORE_06_DecoyRun_AppliesDecoyStatus()
         {
             var jax = CreateTestEntity("jax_1", "Jax", TeamSide.PlayerTeam, 130, 30, 30, 15, 14);
             var drone = CreateTestEntity("drone_1", "Drone", TeamSide.EnemyTeam, 60, 10, 20, 5, 25);
@@ -158,12 +158,11 @@ namespace RPGStrategy.Tests
             var battleManager = bmGO.AddComponent<BattleManager>();
             battleManager.InitializeBattle(new[] { jax, drone }, maxTurnLimit: 10);
 
-            var suppressDecision = new AgentDecision(jax.EntityId, "SuppressionFire", drone.EntityId, "Pinning down drone");
-            var result = battleManager.ProcessActionResolution(jax, suppressDecision);
+            var decoyDecision = new AgentDecision(jax.EntityId, "DecoyRun", jax.EntityId, "Drawing aggro");
+            var result = battleManager.ProcessActionResolution(jax, decoyDecision);
 
             Assert.IsTrue(result.Success);
-            Assert.IsTrue(drone.HasStatusEffect(StatusEffectType.Suppressed), "Drone must be Suppressed!");
-            Assert.AreEqual(20, jax.Stats.CurrentMP, "Jax should have consumed 10 MP (30 -> 20).");
+            Assert.IsTrue(jax.HasStatusEffect(StatusEffectType.DecoyActive), "Jax must have DecoyActive status!");
         }
 
         [Test]

@@ -46,7 +46,7 @@ namespace RPGStrategy.Core.Data
     {
         public string ActionId;
         public string ActionName;
-        public string ActionType; // e.g. "BasicAttack", "SuppressionFire", "CarryWounded", "PleaForMercy"
+        public string ActionType; // e.g. "BasicAttack", "Overwatch", "CarryWounded", "PleaForMercy"
         public int MPCost;
         public int Quantity;
         public string Scope;      // e.g. "SingleEnemy", "SingleAlly", "Self", "AllAllies"

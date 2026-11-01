@@ -193,21 +193,6 @@ namespace RPGStrategy.Core.Extractor
             // -------------------------------------------------------------
             if (hasLivingEnemies)
             {
-                // Suppression Fire: Butuh 10 MP atau amunisi
-                if (actor.Stats.CurrentMP >= 10)
-                {
-                    legalActions.Add(new AvailableActionDTO
-                    {
-                        ActionId = "SuppressionFire",
-                        ActionName = "Suppression Fire (Pin Down)",
-                        ActionType = ActionType.SuppressionFire.ToString(),
-                        MPCost = 10,
-                        Quantity = 0,
-                        Scope = TargetScope.SingleEnemy.ToString(),
-                        Description = "Lay down continuous heavy machine-gun fire, reducing enemy accuracy and speed by 50%."
-                    });
-                }
-
                 legalActions.Add(new AvailableActionDTO
                 {
                     ActionId = "DecoyRun",

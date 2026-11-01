@@ -279,10 +279,6 @@ namespace RPGStrategy.Experiment
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Tembakan Supresi"))
-            {
-                battleManager.SetCommanderDirective(DirectiveType.SuppressiveContainment, "enemy_drone_1", "Lay down continuous suppression fire!");
-            }
             if (GUILayout.Button("Lindungi Korban"))
             {
                 battleManager.SetCommanderDirective(DirectiveType.ProtectVulnerableAlly, "", "Prioritize shielding and rescuing wounded comrades!");

@@ -219,21 +219,6 @@ namespace RPGStrategy.Core.Combat
             // =========================================================
             // 2. AKSI TAKTIS MILITER LANJUTAN
             // =========================================================
-            if (actionId == "SuppressionFire")
-            {
-                var target = FindEntity(targetId);
-                if (target == null || !target.IsAlive || !actor.ConsumeMP(10))
-                {
-                    return ActionExecutionResult.CreateFailure(actor.EntityId, actionId, targetId, "Suppression fire failed.");
-                }
-
-                target.ApplyStatusEffect(StatusEffectType.Suppressed, 2, 50);
-                int chipDmg = DeliverDamageWithCover(actor, target, Mathf.RoundToInt(actor.Stats.AttackPower * 0.5f), isDemoralized, out _);
-                string desc = $"Turn {_globalTurnCounter}: [SUPPRESSION FIRE] {actor.EntityName} laid continuous heavy fire on {target.EntityName} ({chipDmg} dmg), pinning them down!";
-                AddEventLog(desc);
-                return ActionExecutionResult.CreateSuccess(actor.EntityId, actionId, target.EntityId, chipDmg, 0, desc);
-            }
-
             if (actionId.StartsWith("Carry_") || actionId == "CarryWounded")
             {
                 string woundedId = actionId.StartsWith("Carry_") ? actionId.Substring("Carry_".Length) : targetId;

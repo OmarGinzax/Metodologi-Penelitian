@@ -35,7 +35,7 @@ namespace RPGStrategy.AI.Traits
                 new TraitBehaviorSpec {
                     TraitId = "SteadfastVeteran",
                     Description = "Veteran with steady nerves. Follows orders, prioritizes mission over feelings.",
-                    HighAffinityActions = new List<string> { "BasicAttack", "SuppressionFire", "Overwatch", "Action_Defend", "CoordinatedAssault" },
+                    HighAffinityActions = new List<string> { "BasicAttack", "Overwatch", "Action_Defend", "CoordinatedAssault" },
                     LowAffinityActions = new List<string> { "PleaForMercy", "Scatter", "SacrificeCover" },
                     ExpectedCompliances = new List<string> { "OBEY", "ADAPT" },
                     RationalityMin = 55,
@@ -70,8 +70,8 @@ namespace RPGStrategy.AI.Traits
                 "CautiousTactician",
                 new TraitBehaviorSpec {
                     TraitId = "CautiousTactician",
-                    Description = "Risk-averse; prefers positioning, suppression, and controlled engagement.",
-                    HighAffinityActions = new List<string> { "SuppressionFire", "Overwatch", "Action_Defend", "SmokeCover", "FallBackAndCover" },
+                    Description = "Risk-averse; prefers positioning, cover, and controlled engagement.",
+                    HighAffinityActions = new List<string> { "Overwatch", "Action_Defend", "SmokeCover", "FallBackAndCover" },
                     LowAffinityActions = new List<string> { "SuicidalRush", "BerserkCharge", "SacrificeCover" },
                     ExpectedCompliances = new List<string> { "OBEY", "ADAPT" },
                     RationalityMin = 60,

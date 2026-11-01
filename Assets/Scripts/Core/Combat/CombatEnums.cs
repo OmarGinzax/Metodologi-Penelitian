@@ -49,7 +49,6 @@ namespace RPGStrategy.Core.Combat
         TacticalRetreat,   // Mundur teratur: meningkatkan pertahanan 75%, posisi aman
 
         // 6. Aksi Taktis Militer Lanjutan (Post-Apoc Combat)
-        SuppressionFire,   // Tembakan pembungkam terus-menerus: akurasi & gerak musuh berkurang 50%
         CarryWounded,      // Menyeret rekan pingsan/kritis ke balik perlindungan terdekat
         DecoyRun,          // Berlari memancing perhatian seluruh tembakan musuh ke diri sendiri
         FlankManeuver,     // Manuver menusuk sudut mati barikade musuh (flanking critical)
@@ -87,7 +86,7 @@ namespace RPGStrategy.Core.Combat
         MagicDamage,       // Serangan sihir / energi
         Support,           // Buff, heal, pulihkan rekan
         Debuff,            // Lemah / nerf target musuh
-        Tactical,          // Gerakan taktis militer (suppression, flanking, overwatch)
+        Tactical,          // Gerakan taktis militer (maneuvering, flanking, overwatch)
         Psychological,     // Aksi emosional dan psikologis (plea, intimidate, rally)
         Utility            // Aksi serbaguna (tosItem, carry, decoy)
     }

@@ -252,11 +252,6 @@ namespace RPGStrategy.AI.LLM
                 chosenTarget = dyingSworn.EntityId;
                 reason = "Sworn bond emotional priority overrides retreat directive.";
             }
-            else if (snapshot.IsActionAvailable("SuppressionFire"))
-            {
-                chosenAction = "SuppressionFire";
-                chatter = "Laying down suppression fire!";
-            }
             else if (snapshot.IsActionAvailable("Execute"))
             {
                 chosenAction = "Execute";
