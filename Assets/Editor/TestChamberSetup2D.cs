@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -126,30 +127,30 @@ namespace RPGStrategy.Editor
             squadParent.SetParent(root.transform);
             var allCombatants = new List<CombatEntity2D>();
 
-            // Marcus "Grizzly" Vance - Pointman Heavy
+            // Marcus "Grizzly" Vance - Pointman Heavy (Neutral)
             var marcus = CreateEntity2D(squadParent, "u1_marcus", "Marcus (Pointman)", TeamSide.PlayerTeam,
-                new EntityStats(140, 40, 24, 16, 10, 85), "LoyalProtector",
+                new EntityStats(140, 40, 24, 16, 10, 85), "Neutral",
                 new Vector2Int(2, 4), "Heavy Shotgun", 4, 3,
                 TacticalSpriteFactory.CreateUnitSprite("marcus"), grid);
             allCombatants.Add(marcus);
 
-            // Elena "Wraith" Ramos - Sniper Recon
+            // Elena "Wraith" Ramos - Sniper Recon (Passive)
             var elena = CreateEntity2D(squadParent, "u2_elena", "Elena (Sniper)", TeamSide.PlayerTeam,
-                new EntityStats(75, 60, 36, 8, 12, 90), "CautiousTactician",
+                new EntityStats(75, 60, 36, 8, 12, 90), "Passive",
                 new Vector2Int(1, 7), "High-Velocity Sniper", 10, 3,
                 TacticalSpriteFactory.CreateUnitSprite("elena"), grid);
             allCombatants.Add(elena);
 
-            // Tasha "Viper" Lin - Recon Flanker (Vector Tactical Rifle)
+            // Tasha "Viper" Lin - Recon Flanker (Aggressive)
             var tasha = CreateEntity2D(squadParent, "u3_tasha", "Tasha (Flanker)", TeamSide.PlayerTeam,
-                new EntityStats(90, 50, 26, 10, 14, 88), "DisciplinedProfessional",
+                new EntityStats(90, 50, 26, 10, 14, 88), "Aggressive",
                 new Vector2Int(2, 2), "Vector Tactical Rifle", 5, 4,
                 TacticalSpriteFactory.CreateUnitSprite("tasha"), grid);
             allCombatants.Add(tasha);
 
-            // Claire "Angel" Miller - Field Medic
+            // Claire "Angel" Miller - Field Medic (Passive)
             var claire = CreateEntity2D(squadParent, "u4_claire", "Claire (Medic)", TeamSide.PlayerTeam,
-                new EntityStats(70, 75, 14, 8, 11, 75), "TimidAltruist",
+                new EntityStats(70, 75, 14, 8, 11, 75), "Passive",
                 new Vector2Int(1, 3), "Compact PDW", 4, 3,
                 TacticalSpriteFactory.CreateUnitSprite("claire"), grid);
             allCombatants.Add(claire);
@@ -158,23 +159,23 @@ namespace RPGStrategy.Editor
             var enemyParent = new GameObject("_Enemies").transform;
             enemyParent.SetParent(root.transform);
 
-            // HOUND-IV Heavy Strider (Mecha Boss)
+            // HOUND-IV Heavy Strider (Mecha Boss - Aggressive)
             var hound = CreateEntity2D(enemyParent, "boss_hound", "HOUND-IV Heavy Strider", TeamSide.EnemyTeam,
-                new EntityStats(280, 50, 40, 18, 8, 100), "AutomatedMachine",
+                new EntityStats(280, 50, 40, 18, 8, 100), "Aggressive",
                 new Vector2Int(15, 4), "Heavy Rotary Cannon", 8, 2,
                 TacticalSpriteFactory.CreateHoundBossSprite(), grid);
             allCombatants.Add(hound);
 
-            // Scout Drone Alpha
+            // Scout Drone Alpha (Neutral)
             var drone1 = CreateEntity2D(enemyParent, "enemy_drone_1", "Scout Drone Alpha", TeamSide.EnemyTeam,
-                new EntityStats(50, 20, 16, 4, 15, 100), "AutomatedMachine",
+                new EntityStats(50, 20, 16, 4, 15, 100), "Neutral",
                 new Vector2Int(14, 2), "Pulse Blaster", 5, 4,
                 TacticalSpriteFactory.CreateScoutDroneSprite(), grid);
             allCombatants.Add(drone1);
 
-            // Scout Drone Beta
+            // Scout Drone Beta (Aggressive)
             var drone2 = CreateEntity2D(enemyParent, "enemy_drone_2", "Scout Drone Beta", TeamSide.EnemyTeam,
-                new EntityStats(50, 20, 16, 4, 15, 100), "AutomatedMachine",
+                new EntityStats(50, 20, 16, 4, 15, 100), "Aggressive",
                 new Vector2Int(14, 7), "Pulse Blaster", 5, 4,
                 TacticalSpriteFactory.CreateScoutDroneSprite(), grid);
             allCombatants.Add(drone2);
@@ -230,16 +231,40 @@ namespace RPGStrategy.Editor
             return entity;
         }
 
-        [MenuItem("RPGStrategy/Test Chamber 2D/Clear 2D Test Chamber", priority = 10)]
-        public static void Clear2DChamber()
+        [MenuItem("RPGStrategy/Test Chamber 2D/Run All Core Tactical Tests (NUnit)", priority = 20)]
+        public static void RunAllTacticalTests()
         {
-            var root = GameObject.Find("[TestChamber2D]");
-            if (root != null)
+            var testInstance = new RPGStrategy.Tests.CoreTactical2DTests();
+            var testMethods = typeof(RPGStrategy.Tests.CoreTactical2DTests)
+                .GetMethods()
+                .Where(m => m.GetCustomAttributes(typeof(NUnit.Framework.TestAttribute), false).Length > 0)
+                .OrderBy(m => m.Name)
+                .ToList();
+
+            int passed = 0;
+            int failed = 0;
+            Debug.Log($"[TestRunner] Running {testMethods.Count} tactical unit tests...");
+
+            foreach (var m in testMethods)
             {
-                Undo.DestroyObjectImmediate(root);
-                EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
-                Debug.Log("[TestChamberSetup2D] Cleared [TestChamber2D] from active scene.");
+                try
+                {
+                    testInstance.Setup();
+                    m.Invoke(testInstance, null);
+                    testInstance.Teardown();
+                    passed++;
+                    Debug.Log($"<color=#33FF77>✔ [PASS]</color> {m.Name}");
+                }
+                catch (System.Exception ex)
+                {
+                    failed++;
+                    var inner = ex.InnerException ?? ex;
+                    Debug.LogError($"<color=#FF3344>✘ [FAIL]</color> {m.Name}: {inner.Message}\n{inner.StackTrace}");
+                    try { testInstance.Teardown(); } catch { }
+                }
             }
+
+            Debug.Log($"[TestRunner] Finished! Total: {testMethods.Count} | Passed: {passed} | Failed: {failed}");
         }
     }
 }

@@ -315,5 +315,129 @@ namespace RPGStrategy.Tests
             Object.DestroyImmediate(canvasGo);
             Object.DestroyImmediate(bmGo);
         }
+
+        [Test]
+        public void TC_2D_11_NeutralTrait_PrioritizesCoverAndExecutesCoverAndShoot()
+        {
+            var hfsm = new SimpleTacticalHFSM();
+
+            // Pasang rintangan HalfCover di (4, 2)
+            _grid.SetCellType(new Vector2Int(4, 2), CellType.HalfCover);
+
+            // Aktor Neutral di (1, 2) (MoveRange = 3, AttackRange = 5)
+            // Petak (3, 2) memiliki cover di sisi East (bersebelahan dengan 4, 2)
+            var actorGo = new GameObject("NeutralActor");
+            actorGo.transform.SetParent(_holder.transform);
+            var actor = actorGo.AddComponent<CombatEntity2D>();
+            actor.Initialize("act_neutral", "Marcus", TeamSide.PlayerTeam,
+                new EntityStats(100, 20, 20, 10, 10, 80), "Neutral",
+                new Vector2Int(1, 2), "Heavy Shotgun", 5, 3);
+
+            // Musuh di (6, 2)
+            var enemyGo = new GameObject("Enemy");
+            enemyGo.transform.SetParent(_holder.transform);
+            var enemy = enemyGo.AddComponent<CombatEntity2D>();
+            enemy.Initialize("enm_1", "Hunter", TeamSide.EnemyTeam,
+                new EntityStats(80, 20, 15, 5, 10, 80), "Neutral",
+                new Vector2Int(6, 2), "Rifle", 5, 3);
+
+            _grid.SetOccupant(actor.GridPosition, actor);
+            _grid.SetOccupant(enemy.GridPosition, enemy);
+
+            var decision = hfsm.DecideTurn(actor, _grid, new List<CombatEntity2D> { actor, enemy });
+
+            Assert.IsNotNull(decision);
+            // Neutral harus mengeksekusi MoveAndShoot ke petak dengan cover (3, 2)
+            Assert.AreEqual(TacticalActionType.MoveAndShoot, decision.Action,
+                "Neutral must execute Cover + Shoot in 1 action (MoveAndShoot).");
+            Assert.AreEqual(new Vector2Int(3, 2), decision.MoveDestination,
+                "Neutral must move to petak (3, 2) which provides edge cover against the enemy at (6, 2).");
+            Assert.AreEqual(enemy, decision.TargetEnemy);
+        }
+
+        [Test]
+        public void TC_2D_12_AggressiveTrait_SeizesFlankingOpportunityRegardlessOfCover()
+        {
+            var hfsm = new SimpleTacticalHFSM();
+
+            // Pasang tembok FullCover di (5, 6) yang melindungi musuh di (5, 5) dari sisi North (0, 1)
+            _grid.SetCellType(new Vector2Int(5, 6), CellType.FullCover);
+
+            // Musuh di (5, 5). Musuh terlindungi dari North, tapi terbuka (flank) dari South (y < 5)
+            var enemyGo = new GameObject("DefendingEnemy");
+            enemyGo.transform.SetParent(_holder.transform);
+            var enemy = enemyGo.AddComponent<CombatEntity2D>();
+            enemy.Initialize("enm_boss", "Strider", TeamSide.EnemyTeam,
+                new EntityStats(120, 20, 15, 10, 8, 80), "Neutral",
+                new Vector2Int(5, 5), "Heavy Cannon", 6, 2);
+
+            // Aktor Aggressive di (2, 3) (MoveRange = 4, AttackRange = 5)
+            // Dari petak (5, 3) (South dari musuh): Jarak = 2, sudut tembak FLANKING, tapi tanah TERBUKA (CoverType.None)
+            var actorGo = new GameObject("AggressiveActor");
+            actorGo.transform.SetParent(_holder.transform);
+            var actor = actorGo.AddComponent<CombatEntity2D>();
+            actor.Initialize("act_aggro", "Tasha", TeamSide.PlayerTeam,
+                new EntityStats(90, 50, 26, 10, 14, 88), "Aggressive",
+                new Vector2Int(2, 3), "Vector Rifle", 5, 4);
+
+            _grid.SetOccupant(actor.GridPosition, actor);
+            _grid.SetOccupant(enemy.GridPosition, enemy);
+
+            var decision = hfsm.DecideTurn(actor, _grid, new List<CombatEntity2D> { actor, enemy });
+
+            Assert.IsNotNull(decision);
+            Assert.IsTrue(decision.IsFlanking,
+                "Aggressive must seize the flanking opportunity regardless of cover!");
+            Assert.IsTrue(decision.Action == TacticalActionType.MoveAndShoot || decision.Action == TacticalActionType.Shoot);
+            Assert.AreEqual(enemy, decision.TargetEnemy);
+        }
+
+        [Test]
+        public void TC_2D_13_PassiveTrait_RefusesToShootIfAdvancingExposesToFlank_ChoosesReposition()
+        {
+            var hfsm = new SimpleTacticalHFSM();
+
+            // Pasang cover yang aman di (1, 3)
+            _grid.SetCellType(new Vector2Int(1, 4), CellType.FullCover);
+
+            // Musuh A di (8, 2)
+            var enemyAGo = new GameObject("EnemyA");
+            enemyAGo.transform.SetParent(_holder.transform);
+            var enemyA = enemyAGo.AddComponent<CombatEntity2D>();
+            enemyA.Initialize("enm_a", "Shooter A", TeamSide.EnemyTeam,
+                new EntityStats(50, 20, 10, 5, 10, 80), "Neutral",
+                new Vector2Int(8, 2), "Rifle", 5, 3);
+
+            // Musuh B di (3, 8) (akan mem-flank siapa pun di baris terbuka y=2 dari North)
+            var enemyBGo = new GameObject("EnemyB");
+            enemyBGo.transform.SetParent(_holder.transform);
+            var enemyB = enemyBGo.AddComponent<CombatEntity2D>();
+            enemyB.Initialize("enm_b", "Shooter B", TeamSide.EnemyTeam,
+                new EntityStats(50, 20, 10, 5, 10, 80), "Neutral",
+                new Vector2Int(3, 8), "Rifle", 5, 3);
+
+            // Aktor Passive di (1, 1). Jika ia maju ke (4, 2) untuk menembak Enemy A,
+            // ia akan terbuka dan di-flank oleh Enemy B dari North!
+            var actorGo = new GameObject("PassiveActor");
+            actorGo.transform.SetParent(_holder.transform);
+            var actor = actorGo.AddComponent<CombatEntity2D>();
+            actor.Initialize("act_passive", "Claire", TeamSide.PlayerTeam,
+                new EntityStats(70, 75, 14, 8, 11, 75), "Passive",
+                new Vector2Int(1, 1), "PDW", 4, 3);
+
+            _grid.SetOccupant(actor.GridPosition, actor);
+            _grid.SetOccupant(enemyA.GridPosition, enemyA);
+            _grid.SetOccupant(enemyB.GridPosition, enemyB);
+
+            var decision = hfsm.DecideTurn(actor, _grid, new List<CombatEntity2D> { actor, enemyA, enemyB });
+
+            Assert.IsNotNull(decision);
+            // Passive menolak MoveAndShoot jika petak serang berisiko di-flank oleh musuh!
+            // Dia harus memilih Reposition (MoveToCover) tanpa menembak.
+            Assert.AreEqual(TacticalActionType.MoveToCover, decision.Action,
+                "Passive must choose reposition without shooting if advancing would leave it vulnerable to flanking.");
+            Assert.IsNull(decision.TargetEnemy,
+                "Passive repositioning should not execute a shot on an exposed tile.");
+        }
     }
 }
