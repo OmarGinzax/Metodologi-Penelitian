@@ -159,25 +159,25 @@ namespace RPGStrategy.Editor
             var enemyParent = new GameObject("_Enemies").transform;
             enemyParent.SetParent(root.transform);
 
-            // HOUND-IV Heavy Strider (Mecha Boss - Aggressive)
+            // HOUND-IV Heavy Strider (Mecha Boss - Aggressive - Immune to Morale/Psychological)
             var hound = CreateEntity2D(enemyParent, "boss_hound", "HOUND-IV Heavy Strider", TeamSide.EnemyTeam,
                 new EntityStats(280, 50, 40, 18, 8, 100), "Aggressive",
                 new Vector2Int(15, 4), "Heavy Rotary Cannon", 8, 2,
-                TacticalSpriteFactory.CreateHoundBossSprite(), grid);
+                TacticalSpriteFactory.CreateHoundBossSprite(), grid, immuneToPsychological: true);
             allCombatants.Add(hound);
 
-            // Scout Drone Alpha (Neutral)
+            // Scout Drone Alpha (Neutral - Immune to Morale/Psychological)
             var drone1 = CreateEntity2D(enemyParent, "enemy_drone_1", "Scout Drone Alpha", TeamSide.EnemyTeam,
                 new EntityStats(50, 20, 16, 4, 15, 100), "Neutral",
                 new Vector2Int(14, 2), "Pulse Blaster", 5, 4,
-                TacticalSpriteFactory.CreateScoutDroneSprite(), grid);
+                TacticalSpriteFactory.CreateScoutDroneSprite(), grid, immuneToPsychological: true);
             allCombatants.Add(drone1);
 
-            // Scout Drone Beta (Aggressive)
+            // Scout Drone Beta (Aggressive - Immune to Morale/Psychological)
             var drone2 = CreateEntity2D(enemyParent, "enemy_drone_2", "Scout Drone Beta", TeamSide.EnemyTeam,
                 new EntityStats(50, 20, 16, 4, 15, 100), "Aggressive",
                 new Vector2Int(14, 7), "Pulse Blaster", 5, 4,
-                TacticalSpriteFactory.CreateScoutDroneSprite(), grid);
+                TacticalSpriteFactory.CreateScoutDroneSprite(), grid, immuneToPsychological: true);
             allCombatants.Add(drone2);
 
             // 7. Siapkan BattleManager2D & FX
@@ -214,7 +214,8 @@ namespace RPGStrategy.Editor
             int atkRng, 
             int mvRng, 
             Sprite sprite, 
-            TacticalGrid2D grid)
+            TacticalGrid2D grid,
+            bool immuneToPsychological = false)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent);
@@ -225,7 +226,7 @@ namespace RPGStrategy.Editor
             sr.sortingOrder = 20;
 
             var entity = go.AddComponent<CombatEntity2D>();
-            entity.Initialize(id, name, side, stats, trait, pos, weapon, atkRng, mvRng);
+            entity.Initialize(id, name, side, stats, trait, pos, weapon, atkRng, mvRng, immuneToPsychological);
 
             grid.SetOccupant(pos, entity);
             return entity;

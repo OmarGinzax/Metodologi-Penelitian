@@ -36,6 +36,8 @@ namespace RPGStrategy.Core.Combat
         private bool _isTurnInProgress = false;
         private float _autoRunTimer = 0f;
         private readonly List<string> _combatLogs = new List<string>();
+        private readonly HashSet<CombatEntity2D> _fleeShockedEntities = new HashSet<CombatEntity2D>();
+        private readonly HashSet<CombatEntity2D> _deathShockedEntities = new HashSet<CombatEntity2D>();
 
         public TacticalGrid2D Grid { get => grid; set => grid = value; }
         public BattleOutcome Outcome => outcome;
@@ -59,7 +61,7 @@ namespace RPGStrategy.Core.Combat
                 {
                     foreach (var c in combatants)
                     {
-                        if (c != null && c.IsAlive)
+                        if (c != null && c.IsAlive && !c.IsExtracted)
                         {
                             grid.SetOccupant(c.GridPosition, c);
                         }
@@ -76,6 +78,8 @@ namespace RPGStrategy.Core.Combat
             globalTurnCounter = 0;
             outcome = BattleOutcome.InProgress;
             _combatLogs.Clear();
+            _fleeShockedEntities.Clear();
+            _deathShockedEntities.Clear();
             _isTurnInProgress = false;
 
             // Pastikan setiap combatant terdaftar di grid
@@ -97,8 +101,8 @@ namespace RPGStrategy.Core.Combat
             if (grid == null) return;
             foreach (var c in combatants)
             {
-                if (c == null || !c.IsAlive) continue;
-                var enemies = combatants.Where(e => e != null && e.IsAlive && e.Team != c.Team).ToList();
+                if (c == null || !c.IsAlive || c.IsExtracted) continue;
+                var enemies = combatants.Where(e => e != null && e.IsAlive && !e.IsExtracted && e.Team != c.Team).ToList();
                 var nearest = enemies.OrderBy(e => grid.GetDistance(c.GridPosition, e.GridPosition)).FirstOrDefault();
                 c.UpdateCoverStatus(grid, nearest);
             }
@@ -107,7 +111,7 @@ namespace RPGStrategy.Core.Combat
         private void RebuildTurnQueue()
         {
             var aliveOrdered = combatants
-                .Where(c => c != null && c.IsAlive)
+                .Where(c => c != null && c.IsAlive && !c.IsExtracted)
                 .OrderByDescending(c => c.Stats.Speed)
                 .ToList();
 
@@ -134,6 +138,30 @@ namespace RPGStrategy.Core.Combat
             }
         }
 
+        public void ApplyMoraleShock(TeamSide team, int penalty, string reason)
+        {
+            foreach (var ally in combatants.Where(c => c != null && c.IsAlive && !c.IsExtracted && c.Team == team))
+            {
+                if (ally.IsImmuneToPsychologicalEffects)
+                {
+                    if (fx != null && grid != null)
+                    {
+                        Vector3 pos = grid.GridToWorld(ally.GridPosition);
+                        fx.SpawnFloatingText(pos, "RAT IMMUNE", new Color(0.5f, 0.8f, 1f));
+                    }
+                    continue;
+                }
+
+                ally.ReduceRationality(penalty);
+                if (fx != null && grid != null)
+                {
+                    Vector3 pos = grid.GridToWorld(ally.GridPosition);
+                    fx.SpawnFloatingText(pos, $"-{penalty}% RAT", new Color(1f, 0.35f, 0.35f));
+                }
+            }
+            AddLog($"[MORALE SHOCK] Squad witnessed {reason}! Rationality -{penalty}%.");
+        }
+
         private IEnumerator ExecuteSingleTurnRoutine()
         {
             _isTurnInProgress = true;
@@ -154,7 +182,7 @@ namespace RPGStrategy.Core.Combat
             }
 
             _currentActor = _turnQueue.Dequeue();
-            if (_currentActor == null || !_currentActor.IsAlive)
+            if (_currentActor == null || !_currentActor.IsAlive || _currentActor.IsExtracted)
             {
                 _isTurnInProgress = false;
                 yield break;
@@ -162,11 +190,14 @@ namespace RPGStrategy.Core.Combat
 
             globalTurnCounter++;
 
+            // Decrement skill cooldown pada awal giliran unit
+            _currentActor.DecrementSkillCooldown();
+
             // Reset status defending awal giliran
             _currentActor.SetDefending(false);
 
             // Update cover status terhadap ancaman musuh terdekat
-            var enemies = combatants.Where(c => c.IsAlive && c.Team != _currentActor.Team).ToList();
+            var enemies = combatants.Where(c => c.IsAlive && !c.IsExtracted && c.Team != _currentActor.Team).ToList();
             var nearestEnemy = enemies.OrderBy(e => grid.GetDistance(_currentActor.GridPosition, e.GridPosition)).FirstOrDefault();
             _currentActor.UpdateCoverStatus(grid, nearestEnemy);
 
@@ -177,11 +208,21 @@ namespace RPGStrategy.Core.Combat
             _currentActor.SetActionTelemetry(
                 decision.Action.ToString(), 
                 decision.Reasoning, 
-                decision.TargetEnemy?.EntityId ?? "", 
+                decision.TargetEnemy?.EntityId ?? decision.TargetAlly?.EntityId ?? "", 
                 decision.MoveDestination);
 
-            // 3. Eksekusi Pergerakan jika ada
-            if (decision.Action == TacticalActionType.MoveToCover || decision.Action == TacticalActionType.MoveAndShoot)
+            // Pemicu Morale Shock jika unit memutuskan untuk Flee (pertama kali)
+            if (decision.Action == TacticalActionType.Flee && !_fleeShockedEntities.Contains(_currentActor))
+            {
+                _fleeShockedEntities.Add(_currentActor);
+                ApplyMoraleShock(_currentActor.Team, 20, $"{_currentActor.EntityName} fleeing");
+            }
+
+            // 3. Eksekusi Pergerakan jika ada (MoveToCover, MoveAndShoot, Flee, MoveAndCastSkill)
+            if (decision.Action == TacticalActionType.MoveToCover || 
+                decision.Action == TacticalActionType.MoveAndShoot || 
+                decision.Action == TacticalActionType.Flee ||
+                decision.Action == TacticalActionType.MoveAndCastSkill)
             {
                 if (grid != null && decision.MoveDestination != _currentActor.GridPosition)
                 {
@@ -203,11 +244,19 @@ namespace RPGStrategy.Core.Combat
                     if (fx != null) fx.ClearOverlays();
 
                     // Perbarui cover setelah bergerak dengan musuh terdekat terbaru
-                    enemies = combatants.Where(c => c.IsAlive && c.Team != _currentActor.Team).ToList();
+                    enemies = combatants.Where(c => c.IsAlive && !c.IsExtracted && c.Team != _currentActor.Team).ToList();
                     nearestEnemy = enemies.OrderBy(e => grid.GetDistance(_currentActor.GridPosition, e.GridPosition)).FirstOrDefault();
                     _currentActor.UpdateCoverStatus(grid, nearestEnemy);
                     RefreshAllCoverStatuses();
-                    AddLog($"{_currentActor.EntityName} moved to ({_currentActor.GridPosition.x}, {_currentActor.GridPosition.y}) [Cover: {_currentActor.ActiveCoverType}].");
+
+                    if (decision.Action == TacticalActionType.Flee)
+                    {
+                        AddLog($"{_currentActor.EntityName} is fleeing towards extraction! Moved to ({_currentActor.GridPosition.x}, {_currentActor.GridPosition.y}).");
+                    }
+                    else
+                    {
+                        AddLog($"{_currentActor.EntityName} moved to ({_currentActor.GridPosition.x}, {_currentActor.GridPosition.y}) [Cover: {_currentActor.ActiveCoverType}].");
+                    }
                     yield return new WaitForSeconds(0.1f);
                 }
             }
@@ -242,26 +291,102 @@ namespace RPGStrategy.Core.Combat
                     int rawAtk = _currentActor.Stats.AttackPower;
                     int dealtDmg = target.ApplyDamage(rawAtk, decision.IsFlanking);
 
-                    // Pemicu Floating Text
-                    if (fx != null)
+                    // Pemicu Floating Text & Intercept Check
+                    if (target.LastDamageWasRedirected && target.LastGuardian != null)
                     {
-                        string popup = decision.IsFlanking ? $"CRIT! -{dealtDmg}" : $"-{dealtDmg}";
-                        Color txtCol = decision.IsFlanking ? new Color(1f, 0.85f, 0.1f) : new Color(0.95f, 0.25f, 0.2f);
-                        if (!decision.IsFlanking && target.ActiveCoverType != CoverType.None)
+                        Vector3 guardianPos = grid.GridToWorld(target.LastGuardian.GridPosition);
+                        if (fx != null)
                         {
-                            popup = $"COVER -{dealtDmg}";
-                            txtCol = new Color(0.6f, 0.75f, 0.95f);
+                            fx.SpawnFloatingText(targetPos, "INTERCEPTED!", new Color(0.3f, 0.85f, 1f));
+                            fx.SpawnFloatingText(guardianPos, $"GUARD HIT -{dealtDmg}", new Color(1f, 0.6f, 0.2f));
                         }
-                        fx.SpawnFloatingText(targetPos, popup, txtCol);
+                        AddLog($"[GUARD INTERCEPT] {target.LastGuardian.EntityName} absorbed {dealtDmg} dmg for {target.EntityName}!");
+
+                        if (!target.LastGuardian.IsAlive)
+                        {
+                            AddLog($"[ELIMINATED] {target.LastGuardian.EntityName} fell in battle while protecting {target.EntityName}!");
+                            grid.ClearOccupant(target.LastGuardian.GridPosition);
+                            if (!_deathShockedEntities.Contains(target.LastGuardian))
+                            {
+                                _deathShockedEntities.Add(target.LastGuardian);
+                                ApplyMoraleShock(target.LastGuardian.Team, 40, $"{target.LastGuardian.EntityName} eliminated (K.I.A.)");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (fx != null)
+                        {
+                            string popup = decision.IsFlanking ? $"CRIT! -{dealtDmg}" : $"-{dealtDmg}";
+                            Color txtCol = decision.IsFlanking ? new Color(1f, 0.85f, 0.1f) : new Color(0.95f, 0.25f, 0.2f);
+                            if (!decision.IsFlanking && target.ActiveCoverType != CoverType.None)
+                            {
+                                popup = $"COVER -{dealtDmg}";
+                                txtCol = new Color(0.6f, 0.75f, 0.95f);
+                            }
+                            fx.SpawnFloatingText(targetPos, popup, txtCol);
+                        }
+
+                        string flankTag = decision.IsFlanking ? " [FLANK CRITICAL!]" : "";
+                        AddLog($"{_currentActor.EntityName} fired {_currentActor.WeaponName} at {target.EntityName} dealing {dealtDmg} dmg{flankTag}.");
+
+                        if (!target.IsAlive)
+                        {
+                            AddLog($"[ELIMINATED] {target.EntityName} was destroyed!");
+                            grid.ClearOccupant(target.GridPosition);
+                            if (!_deathShockedEntities.Contains(target))
+                            {
+                                _deathShockedEntities.Add(target);
+                                ApplyMoraleShock(target.Team, 40, $"{target.EntityName} eliminated (K.I.A.)");
+                            }
+                        }
+                    }
+                }
+            }
+            else if (decision.Action == TacticalActionType.CastSkill || decision.Action == TacticalActionType.MoveAndCastSkill)
+            {
+                var allyTarget = decision.TargetAlly;
+                if (allyTarget != null && allyTarget.IsAlive)
+                {
+                    Vector3 casterPos = grid.GridToWorld(_currentActor.GridPosition);
+                    Vector3 targetPos = grid.GridToWorld(allyTarget.GridPosition);
+
+                    if (decision.SkillId == "Guard")
+                    {
+                        _currentActor.PutSkillOnCooldown(2);
+                        allyTarget.ApplyGuard(_currentActor, 2);
+                        allyTarget.Stats.RestoreRationality(10);
+
+                        if (fx != null)
+                        {
+                            fx.SpawnFloatingText(targetPos, "GUARDED! (+10% RAT)", new Color(0.2f, 0.85f, 1f));
+                            fx.PlayBulletTracer(casterPos, targetPos, false, null);
+                        }
+
+                        AddLog($"[SKILL: GUARD] {_currentActor.EntityName} cast Guard on {allyTarget.EntityName}! (Damage redirected for 2 turns, +10% Rationality).");
+                    }
+                    else if (decision.SkillId == "Heal")
+                    {
+                        _currentActor.PutSkillOnCooldown(2);
+                        allyTarget.Heal(50);
+                        allyTarget.Stats.RestoreRationality(10);
+
+                        if (fx != null)
+                        {
+                            fx.SpawnFloatingText(targetPos, "+50 HP (+10% RAT)", new Color(0.2f, 1f, 0.4f));
+                            fx.PlayBulletTracer(casterPos, targetPos, false, null);
+                        }
+
+                        AddLog($"[SKILL: HEAL] {_currentActor.EntityName} healed {allyTarget.EntityName} (+50 HP, +10% Rationality)!");
                     }
 
-                    string flankTag = decision.IsFlanking ? " [FLANK CRITICAL!]" : "";
-                    AddLog($"{_currentActor.EntityName} fired {_currentActor.WeaponName} at {target.EntityName} dealing {dealtDmg} dmg{flankTag}.");
-
-                    if (!target.IsAlive)
+                    // Cek apakah flee command pada target ter-abort karena pemulihan HP & Rationality
+                    var allyTrait = TacticalTraitFactory.GetTrait(allyTarget.CurrentTraitId);
+                    if (allyTarget.CheckAndApplyFleeAbort(allyTrait.FleeHpThreshold, allyTrait.FleeHpThreshold))
                     {
-                        AddLog($"[ELIMINATED] {target.EntityName} was destroyed!");
-                        grid.ClearOccupant(target.GridPosition);
+                        _fleeShockedEntities.Remove(allyTarget);
+                        AddLog($"[RALLY] {allyTarget.EntityName}'s health and composure were restored above threshold! Flee command aborted.");
+                        if (fx != null) fx.SpawnFloatingText(targetPos, "RALLIED!", Color.green);
                     }
                 }
             }
@@ -272,11 +397,35 @@ namespace RPGStrategy.Core.Combat
                 if (fx != null) fx.SpawnFloatingText(actorPos, "DEFENDING!", new Color(0.2f, 0.85f, 1f));
                 AddLog($"{_currentActor.EntityName} entered defensive stance behind cover (Hunker Down).");
             }
+            else if (decision.Action == TacticalActionType.Flee)
+            {
+                // Cek apakah aktor telah mencapai petak ekstraksi
+                if (grid != null && grid.IsExtractionTile(_currentActor.GridPosition))
+                {
+                    Vector3 evacPos = grid.GridToWorld(_currentActor.GridPosition);
+                    if (fx != null) fx.SpawnFloatingText(evacPos, "EXTRACTED!", new Color(0.2f, 1f, 0.85f));
+
+                    grid.ClearOccupant(_currentActor.GridPosition);
+                    _currentActor.SetExtracted();
+
+                    AddLog($"[EXTRACTED] {_currentActor.EntityName} reached the extraction zone and safely evacuated the battlefield!");
+                    yield return new WaitForSeconds(0.2f);
+                }
+                else
+                {
+                    Vector3 actorPos = grid.GridToWorld(_currentActor.GridPosition);
+                    if (fx != null) fx.SpawnFloatingText(actorPos, "FLEEING!", new Color(1f, 0.65f, 0.2f));
+                }
+            }
 
             yield return new WaitForSeconds(0.12f);
 
-            // Akhiri giliran unit
-            _currentActor.SetActionTelemetry("TurnEnded", "Turn completed.");
+            // Akhiri giliran unit jika belum dievakuasi
+            if (!_currentActor.IsExtracted)
+            {
+                _currentActor.DecrementGuardDuration();
+                _currentActor.SetActionTelemetry("TurnEnded", "Turn completed.");
+            }
             _currentActor = null;
 
             CheckBattleOutcome();
@@ -285,18 +434,28 @@ namespace RPGStrategy.Core.Combat
 
         private void CheckBattleOutcome()
         {
-            bool allEnemiesDead = combatants.Where(c => c.Team == TeamSide.EnemyTeam).All(c => !c.IsAlive);
+            bool allEnemiesDone = combatants.Where(c => c.Team == TeamSide.EnemyTeam).All(c => !c.IsAlive || c.IsExtracted);
+            bool allSquadDone = combatants.Where(c => c.Team == TeamSide.PlayerTeam).All(c => !c.IsAlive || c.IsExtracted);
+            bool anySquadExtracted = combatants.Where(c => c.Team == TeamSide.PlayerTeam).Any(c => c.IsExtracted);
             bool allSquadDead = combatants.Where(c => c.Team == TeamSide.PlayerTeam).All(c => !c.IsAlive);
 
-            if (allEnemiesDead && !allSquadDead)
+            if (allEnemiesDone && !allSquadDead)
             {
                 outcome = BattleOutcome.Victory;
                 AddLog("=== VICTORY: All hostile mechanized units eliminated! ===");
             }
-            else if (allSquadDead)
+            else if (allSquadDone)
             {
-                outcome = BattleOutcome.Defeat;
-                AddLog("=== DEFEAT: Squad wiped out on Sector 7 Overpass. ===");
+                if (anySquadExtracted)
+                {
+                    outcome = BattleOutcome.Victory;
+                    AddLog("=== TACTICAL RETREAT: Surviving squad safely extracted from Sector 7 Overpass! ===");
+                }
+                else
+                {
+                    outcome = BattleOutcome.Defeat;
+                    AddLog("=== DEFEAT: Squad wiped out on Sector 7 Overpass. ===");
+                }
             }
         }
 

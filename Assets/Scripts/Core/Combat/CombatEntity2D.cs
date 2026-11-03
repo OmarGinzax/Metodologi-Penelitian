@@ -36,6 +36,16 @@ namespace RPGStrategy.Core.Combat
         [SerializeField] private CoverType activeCoverType = CoverType.None;
         [SerializeField] private bool isFlanked = false;
         [SerializeField] private bool isDefending = false;
+        [SerializeField] private bool isFleeing = false;
+        [SerializeField] private bool isExtracted = false;
+
+        [Header("=== SUPPORT SKILLS & STATUS EFFECTS ===")]
+        [SerializeField] private CombatEntity2D guardedBy = null;
+        [SerializeField] private int guardTurnsRemaining = 0;
+        [SerializeField] private int skillCooldownTurns = 0;
+
+        [Header("=== PSYCHOLOGICAL & RATIONALITY STATUS ===")]
+        [SerializeField] private bool isImmuneToPsychologicalEffects = false;
 
         [Header("=== CORE STATS ===")]
         [SerializeField] private EntityStats stats = new EntityStats(100, 50, 20, 10, 12, 80);
@@ -56,6 +66,25 @@ namespace RPGStrategy.Core.Combat
         public CoverType ActiveCoverType => activeCoverType;
         public bool IsFlanked => isFlanked;
         public bool IsDefending => isDefending;
+        public bool IsFleeing => isFleeing;
+        public bool IsExtracted => isExtracted;
+        public bool IsImmuneToPsychologicalEffects
+        {
+            get => isImmuneToPsychologicalEffects;
+            set => isImmuneToPsychologicalEffects = value;
+        }
+        public bool IsImmuneToRationality
+        {
+            get => isImmuneToPsychologicalEffects;
+            set => isImmuneToPsychologicalEffects = value;
+        }
+        public CombatEntity2D GuardedBy => guardedBy;
+        public int GuardTurnsRemaining => guardTurnsRemaining;
+        public bool IsGuarded => guardedBy != null && guardedBy.IsAlive && guardTurnsRemaining > 0;
+        public int SkillCooldownTurns => skillCooldownTurns;
+        public bool IsSkillReady => skillCooldownTurns <= 0;
+        public bool LastDamageWasRedirected { get; private set; } = false;
+        public CombatEntity2D LastGuardian { get; private set; } = null;
         public EntityStats Stats => stats;
         public bool IsAlive => stats != null && stats.IsAlive;
         public bool IsActing => isActing;
@@ -82,7 +111,8 @@ namespace RPGStrategy.Core.Combat
             Vector2Int startGridPos, 
             string weapon = "Vector Tactical Rifle", 
             int atkRng = 5, 
-            int mvRng = 3)
+            int mvRng = 3,
+            bool immuneToPsychological = false)
         {
             entityId = id;
             entityName = name;
@@ -93,6 +123,7 @@ namespace RPGStrategy.Core.Combat
             weaponName = weapon;
             attackRange = atkRng;
             moveRange = mvRng;
+            isImmuneToPsychologicalEffects = immuneToPsychological;
 
             currentActionType = "IdleWaiting";
             currentActionDescription = "Unit standing by.";
@@ -103,6 +134,13 @@ namespace RPGStrategy.Core.Combat
             activeCoverType = CoverType.None;
             isFlanked = false;
             isDefending = false;
+            isFleeing = false;
+            isExtracted = false;
+            guardedBy = null;
+            guardTurnsRemaining = 0;
+            skillCooldownTurns = 0;
+            LastDamageWasRedirected = false;
+            LastGuardian = null;
 
             if (stats != null && !stats.IsAlive)
             {
@@ -130,6 +168,89 @@ namespace RPGStrategy.Core.Combat
             {
                 SetActionTelemetry("Defending_HunkerDown", "Fortified in cover; incoming damage reduced 50%.");
             }
+        }
+
+        public void SetFleeing(bool fleeing)
+        {
+            isFleeing = fleeing;
+            if (fleeing)
+            {
+                SetActionTelemetry("Fleeing", "Unit critical; retreating towards extraction zone.", "", targetGridCoordinates);
+            }
+        }
+
+        public void SetExtracted()
+        {
+            isExtracted = true;
+            isFleeing = false;
+            isDefending = false;
+            SetActionTelemetry("Extracted", "Unit safely evacuated via Extraction Zone.");
+
+            if (_spriteRenderer != null)
+            {
+                _spriteRenderer.enabled = false;
+            }
+            gameObject.SetActive(false);
+        }
+
+        public void ApplyGuard(CombatEntity2D guardian, int turns = 2)
+        {
+            guardedBy = guardian;
+            guardTurnsRemaining = turns;
+        }
+
+        public void DecrementGuardDuration()
+        {
+            if (guardTurnsRemaining > 0)
+            {
+                guardTurnsRemaining--;
+                if (guardTurnsRemaining <= 0)
+                {
+                    guardedBy = null;
+                }
+            }
+        }
+
+        public void ClearGuard()
+        {
+            guardedBy = null;
+            guardTurnsRemaining = 0;
+        }
+
+        public void PutSkillOnCooldown(int turns = 2)
+        {
+            skillCooldownTurns = turns;
+        }
+
+        public void DecrementSkillCooldown()
+        {
+            if (skillCooldownTurns > 0)
+            {
+                skillCooldownTurns--;
+            }
+        }
+
+        public void ReduceRationality(int amount)
+        {
+            if (isImmuneToPsychologicalEffects || stats == null) return;
+            stats.ReduceRationality(amount);
+        }
+
+        public bool CheckAndApplyFleeAbort(float hpThresh, float ratThresh)
+        {
+            if (!isFleeing || !IsAlive || isExtracted) return false;
+
+            float hpRatio = stats.HPRatio;
+            float ratRatio = (float)stats.Rationality / 100f;
+            bool ratOk = isImmuneToPsychologicalEffects || ratRatio > (ratThresh + 0.0001f);
+
+            if (hpRatio > (hpThresh + 0.0001f) && ratOk)
+            {
+                SetFleeing(false);
+                SetActionTelemetry("Rallied", "Health and composure restored above retreat threshold; returning to combat.");
+                return true;
+            }
+            return false;
         }
 
         public void UpdateCoverStatus(TacticalGrid2D grid, CombatEntity2D nearestThreat)
@@ -206,6 +327,9 @@ namespace RPGStrategy.Core.Combat
 
         public int ApplyDamage(int rawDamage, bool attackIsFlanking = false)
         {
+            LastDamageWasRedirected = false;
+            LastGuardian = null;
+
             if (!IsAlive) return 0;
 
             int effectiveAtk = rawDamage;
@@ -236,6 +360,16 @@ namespace RPGStrategy.Core.Combat
             int defMitigation = stats.DefensePower / 2;
             int finalDmg = Mathf.Max(1, mitigatedAtk - defMitigation);
 
+            // Redirection jika target sedang dilindungi Guard
+            if (IsGuarded && guardedBy != null && guardedBy.IsAlive && guardedBy != this)
+            {
+                LastDamageWasRedirected = true;
+                LastGuardian = guardedBy;
+                guardedBy.TakeRedirectedDamage(finalDmg, this);
+                StartCoroutine(HitFlashRoutine());
+                return finalDmg;
+            }
+
             stats.CurrentHP -= finalDmg;
 
             // Trigger visual hit flash
@@ -248,6 +382,19 @@ namespace RPGStrategy.Core.Combat
             }
 
             return finalDmg;
+        }
+
+        public void TakeRedirectedDamage(int damage, CombatEntity2D protectedAlly)
+        {
+            if (!IsAlive) return;
+            stats.CurrentHP -= damage;
+            StartCoroutine(HitFlashRoutine());
+            SetActionTelemetry("Guard_Intercept", $"Intercepted {damage} damage for {protectedAlly.EntityName}.");
+            if (!IsAlive)
+            {
+                SetActionTelemetry("KIA_Destroyed", "Unit eliminated taking damage for ally.");
+                ApplyDeathVisuals();
+            }
         }
 
         /// <summary>

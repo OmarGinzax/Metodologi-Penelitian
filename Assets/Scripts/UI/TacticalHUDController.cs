@@ -360,6 +360,14 @@ namespace RPGStrategy.UI
                     continue;
                 }
 
+                if (c.IsExtracted)
+                {
+                    lbl.text =
+                        $"<color=#88CCFF><b>{name}</b> ({trait}) - HP {c.Stats.CurrentHP}/{c.Stats.MaxHP}</color>\n" +
+                        $"<color=#44FFCC>[EXTRACTED] - Safely Evacuated</color>";
+                    continue;
+                }
+
                 string coverColour;
                 string coverLabel;
                 switch (c.ActiveCoverType)
@@ -373,18 +381,29 @@ namespace RPGStrategy.UI
                 }
 
                 string flankedTag = c.IsFlanked ? " <color=#FF8833>[FLANKED]</color>" : "";
-                string statusText = c.IsDefending ? "Defending (Hunker Down)" : c.CurrentActionType;
+                string guardTag = c.IsGuarded && c.GuardedBy != null 
+                    ? $" <color=#44CCFF>[GUARDED ({c.GuardTurnsRemaining}t)]</color>" 
+                    : "";
+
+                string statusText = c.IsFleeing 
+                    ? "<color=#FFAA33>[FLEEING] Retreating to Evac</color>" 
+                    : (c.IsDefending ? "Defending (Hunker Down)" : $"<color=#CCCCCC>{c.CurrentActionType}</color>");
 
                 string hpCol = c.Stats.CurrentHP > c.Stats.MaxHP * 0.5f 
                     ? "#33FF77" 
                     : (c.Stats.CurrentHP > c.Stats.MaxHP * 0.25f ? "#FFCC33" : "#FF4444");
 
-                // 2 Baris saja sesuai spesifikasi:
-                // Baris 1: nama (trait) - HP
-                // Baris 2: Cover - status
+                string ratCol = c.Stats.Rationality >= 75 ? "#88CCFF" : (c.Stats.Rationality >= 40 ? "#FFCC33" : "#FF6633");
+                string ratInfo = c.IsImmuneToPsychologicalEffects
+                    ? "<color=#88CCFF>RAT [IMMUNE]</color>"
+                    : $"<color={ratCol}>RAT {c.Stats.Rationality}</color> <color=#AAAAAA>[{c.Stats.ComposureLevel}]</color>";
+
+                // 2 Baris saja:
+                // Baris 1: nama (trait) - HP - RAT [Composure]
+                // Baris 2: Cover [FLANKED] [GUARDED] - status
                 lbl.text =
-                    $"<b>{name}</b> ({trait}) - HP <color={hpCol}>{c.Stats.CurrentHP}/{c.Stats.MaxHP}</color>\n" +
-                    $"<color={coverColour}>{coverLabel}</color>{flankedTag} - <color=#CCCCCC>{statusText}</color>";
+                    $"<b>{name}</b> ({trait}) - HP <color={hpCol}>{c.Stats.CurrentHP}/{c.Stats.MaxHP}</color> | {ratInfo}\n" +
+                    $"<color={coverColour}>{coverLabel}</color>{flankedTag}{guardTag} - {statusText}";
             }
         }
 

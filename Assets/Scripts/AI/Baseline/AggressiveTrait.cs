@@ -20,6 +20,7 @@ namespace RPGStrategy.AI.Baseline
     {
         public override string TraitName => "Aggressive";
         public override TacticalTraitType TraitType => TacticalTraitType.Aggressive;
+        public override float FleeHpThreshold => 0.10f; // Aggressive flees at 10% HP
 
         public override TacticalDecision2D DecideTurn(
             CombatEntity2D actor,
@@ -33,12 +34,31 @@ namespace RPGStrategy.AI.Baseline
             if (enemies.Count == 0)
                 return new TacticalDecision2D(TacticalActionType.Idle, actor.GridPosition, null, false, "No hostiles remaining.");
 
+            // ===================================================================
+            // 0. FLEE CHECK (HP <= 10% ATAU Rationality <= 10%)
+            // Mundur ke zona ekstraksi jika darah atau rasionalitas kritis
+            // ===================================================================
+            if (ShouldFlee(actor))
+            {
+                return CreateFleeDecision(actor, grid, enemies);
+            }
+
+            // ===================================================================
+            // 0.5 SUPPORT SKILL CHECK
+            // Prioritas: selamatkan rekan tim yang sedang fleeing atau HP < 50%
+            // ===================================================================
+            var skillDecision = CheckSupportSkill(actor, grid, allCombatants);
+            if (skillDecision != null)
+            {
+                return skillDecision;
+            }
+
             var nearestEnemy = GetNearestEnemy(actor.GridPosition, enemies, grid);
             var reachableTiles = grid.GetReachableTiles(actor.GridPosition, actor.MoveRange);
 
             // ===================================================================
             // 1. PRIORITAS: CEK POSISI SEKARANG DULU
-            // Jika sudah di posisi yang bagus (flanking opportunity atau cover + target), Shoot tanpa gerak!
+            // Jika sudah di posisi yang bagus (flanking opportunity + cover), Shoot tanpa gerak!
             // ===================================================================
             {
                 var directFromCurrent = GetDirectTargetsFrom(actor.GridPosition, actor.AttackRange, grid, enemies);
@@ -54,18 +74,6 @@ namespace RPGStrategy.AI.Baseline
                         target.enemy,
                         true,
                         $"Aggressive: Holding position — Flank Critical shot at {target.enemy.EntityName}!");
-                }
-
-                // Jika ada target + di cover → tembak dari posisi sekarang (tidak perlu gerak)
-                if (actor.ActiveCoverType != CoverType.None && directFromCurrent.Count > 0)
-                {
-                    var target = directFromCurrent.OrderBy(t => t.enemy.Stats.CurrentHP).First();
-                    return new TacticalDecision2D(
-                        TacticalActionType.Shoot,
-                        actor.GridPosition,
-                        target.enemy,
-                        target.isFlank,
-                        $"Aggressive: Holding cover — firing {actor.WeaponName} at {target.enemy.EntityName}.");
                 }
             }
 
@@ -126,7 +134,27 @@ namespace RPGStrategy.AI.Baseline
             }
 
             // ===================================================================
-            // 3. FALLBACK: BERGERAK + TEMBAK DENGAN COVER (tanpa flanking)
+            // 3. PRIORITAS: CEK POSISI SEKARANG DULU
+            // Jika sudah di posisi yang bagus (cover + target), Shoot tanpa gerak!
+            // ===================================================================
+            {
+                var directFromCurrent = GetDirectTargetsFrom(actor.GridPosition, actor.AttackRange, grid, enemies);
+
+                // Jika ada target + di cover → tembak dari posisi sekarang (tidak perlu gerak)
+                if (actor.ActiveCoverType != CoverType.None && directFromCurrent.Count > 0)
+                {
+                    var target = directFromCurrent.OrderBy(t => t.enemy.Stats.CurrentHP).First();
+                    return new TacticalDecision2D(
+                        TacticalActionType.Shoot,
+                        actor.GridPosition,
+                        target.enemy,
+                        target.isFlank,
+                        $"Aggressive: Holding cover — firing {actor.WeaponName} at {target.enemy.EntityName}.");
+                }
+            }
+
+            // ===================================================================
+            // 4. FALLBACK: BERGERAK + TEMBAK DENGAN COVER (tanpa flanking)
             // Aggressive tidak suka diam — selalu berusaha menutup jarak ke musuh
             // ===================================================================
             Vector2Int bestMoveTile = actor.GridPosition;

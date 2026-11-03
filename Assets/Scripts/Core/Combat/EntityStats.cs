@@ -66,6 +66,18 @@ namespace RPGStrategy.Core.Combat
             set => rationality = Mathf.Clamp(value, 0, 100);
         }
 
+        public void ReduceRationality(int amount)
+        {
+            if (amount <= 0) return;
+            Rationality -= amount;
+        }
+
+        public void RestoreRationality(int amount)
+        {
+            if (amount <= 0) return;
+            Rationality += amount;
+        }
+
         public string ComposureLevel
         {
             get

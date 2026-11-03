@@ -22,6 +22,7 @@ namespace RPGStrategy.AI.Baseline
     {
         public override string TraitName => "Passive";
         public override TacticalTraitType TraitType => TacticalTraitType.Passive;
+        public override float FleeHpThreshold => 0.30f; // Passive flees at 30% HP
 
         public override TacticalDecision2D DecideTurn(
             CombatEntity2D actor,
@@ -34,6 +35,25 @@ namespace RPGStrategy.AI.Baseline
             var enemies = GetLivingEnemies(actor, allCombatants);
             if (enemies.Count == 0)
                 return new TacticalDecision2D(TacticalActionType.Idle, actor.GridPosition, null, false, "No hostiles remaining.");
+
+            // ===================================================================
+            // 0. FLEE CHECK (HP <= 30% ATAU Rationality <= 30%)
+            // Mundur ke zona ekstraksi jika darah atau rasionalitas kritis
+            // ===================================================================
+            if (ShouldFlee(actor))
+            {
+                return CreateFleeDecision(actor, grid, enemies);
+            }
+
+            // ===================================================================
+            // 0.5 SUPPORT SKILL CHECK (Heal untuk Claire, dll.)
+            // Prioritas: selamatkan rekan tim yang sedang fleeing atau HP < 50%
+            // ===================================================================
+            var skillDecision = CheckSupportSkill(actor, grid, allCombatants);
+            if (skillDecision != null)
+            {
+                return skillDecision;
+            }
 
             var nearestEnemy = GetNearestEnemy(actor.GridPosition, enemies, grid);
             var reachableTiles = grid.GetReachableTiles(actor.GridPosition, actor.MoveRange);

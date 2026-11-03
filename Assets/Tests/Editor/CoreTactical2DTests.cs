@@ -439,5 +439,392 @@ namespace RPGStrategy.Tests
             Assert.IsNull(decision.TargetEnemy,
                 "Passive repositioning should not execute a shot on an exposed tile.");
         }
+
+        [Test]
+        public void TC_2D_14_PassiveTrait_FleesAt30PercentHP()
+        {
+            var hfsm = new SimpleTacticalHFSM();
+
+            var actorGo = new GameObject("PassiveActor");
+            actorGo.transform.SetParent(_holder.transform);
+            var actor = actorGo.AddComponent<CombatEntity2D>();
+            actor.Initialize("act_claire", "Claire", TeamSide.PlayerTeam,
+                new EntityStats(100, 50, 10, 5, 10, 80), "Passive",
+                new Vector2Int(5, 5), "PDW", 4, 3);
+
+            var enemyGo = new GameObject("Enemy");
+            enemyGo.transform.SetParent(_holder.transform);
+            var enemy = enemyGo.AddComponent<CombatEntity2D>();
+            enemy.Initialize("enm_hound", "Hound", TeamSide.EnemyTeam,
+                new EntityStats(100, 50, 20, 10, 10, 80), "Aggressive",
+                new Vector2Int(10, 5), "Cannon", 6, 2);
+
+            _grid.SetOccupant(actor.GridPosition, actor);
+            _grid.SetOccupant(enemy.GridPosition, enemy);
+
+            // Pada 31 HP (31%), Passive belum flee
+            actor.Stats.CurrentHP = 31;
+            var dec31 = hfsm.DecideTurn(actor, _grid, new List<CombatEntity2D> { actor, enemy });
+            Assert.AreNotEqual(TacticalActionType.Flee, dec31.Action, "Passive should not flee above 30% HP.");
+
+            // Pada 30 HP (30%), Passive mulai Flee ke barat (x = 0 zona ekstraksi)
+            actor.Stats.CurrentHP = 30;
+            var dec30 = hfsm.DecideTurn(actor, _grid, new List<CombatEntity2D> { actor, enemy });
+            Assert.AreEqual(TacticalActionType.Flee, dec30.Action, "Passive must execute Flee at <= 30% HP.");
+            Assert.Less(dec30.MoveDestination.x, actor.GridPosition.x, "Flee move destination must progress westward towards extraction zone.");
+        }
+
+        [Test]
+        public void TC_2D_15_NeutralTrait_FleesAt20PercentHP()
+        {
+            var hfsm = new SimpleTacticalHFSM();
+
+            var actorGo = new GameObject("NeutralActor");
+            actorGo.transform.SetParent(_holder.transform);
+            var actor = actorGo.AddComponent<CombatEntity2D>();
+            actor.Initialize("act_marcus", "Marcus", TeamSide.PlayerTeam,
+                new EntityStats(100, 50, 20, 10, 10, 80), "Neutral",
+                new Vector2Int(6, 4), "Shotgun", 4, 3);
+
+            var enemyGo = new GameObject("Enemy");
+            enemyGo.transform.SetParent(_holder.transform);
+            var enemy = enemyGo.AddComponent<CombatEntity2D>();
+            enemy.Initialize("enm_hound", "Hound", TeamSide.EnemyTeam,
+                new EntityStats(100, 50, 20, 10, 10, 80), "Aggressive",
+                new Vector2Int(12, 4), "Cannon", 6, 2);
+
+            _grid.SetOccupant(actor.GridPosition, actor);
+            _grid.SetOccupant(enemy.GridPosition, enemy);
+
+            // Pada 25 HP (25%), Neutral belum flee
+            actor.Stats.CurrentHP = 25;
+            var dec25 = hfsm.DecideTurn(actor, _grid, new List<CombatEntity2D> { actor, enemy });
+            Assert.AreNotEqual(TacticalActionType.Flee, dec25.Action, "Neutral should not flee above 20% HP.");
+
+            // Pada 20 HP (20%), Neutral mulai Flee ke arah x=0
+            actor.Stats.CurrentHP = 20;
+            var dec20 = hfsm.DecideTurn(actor, _grid, new List<CombatEntity2D> { actor, enemy });
+            Assert.AreEqual(TacticalActionType.Flee, dec20.Action, "Neutral must execute Flee at <= 20% HP.");
+            Assert.Less(dec20.MoveDestination.x, actor.GridPosition.x, "Flee move destination must move westward towards extraction.");
+        }
+
+        [Test]
+        public void TC_2D_16_AggressiveTrait_FleesAt10PercentHP()
+        {
+            var hfsm = new SimpleTacticalHFSM();
+
+            var actorGo = new GameObject("AggroActor");
+            actorGo.transform.SetParent(_holder.transform);
+            var actor = actorGo.AddComponent<CombatEntity2D>();
+            actor.Initialize("act_tasha", "Tasha", TeamSide.PlayerTeam,
+                new EntityStats(100, 50, 25, 10, 12, 80), "Aggressive",
+                new Vector2Int(7, 3), "Vector", 5, 4);
+
+            var enemyGo = new GameObject("Enemy");
+            enemyGo.transform.SetParent(_holder.transform);
+            var enemy = enemyGo.AddComponent<CombatEntity2D>();
+            enemy.Initialize("enm_drone", "Drone", TeamSide.EnemyTeam,
+                new EntityStats(100, 50, 15, 5, 10, 80), "Neutral",
+                new Vector2Int(12, 3), "Blaster", 5, 3);
+
+            _grid.SetOccupant(actor.GridPosition, actor);
+            _grid.SetOccupant(enemy.GridPosition, enemy);
+
+            // Pada 15 HP (15%), Aggressive tetap berjuang dan belum flee
+            actor.Stats.CurrentHP = 15;
+            var dec15 = hfsm.DecideTurn(actor, _grid, new List<CombatEntity2D> { actor, enemy });
+            Assert.AreNotEqual(TacticalActionType.Flee, dec15.Action, "Aggressive should fight on and not flee at 15% HP.");
+
+            // Pada 10 HP (10%), Aggressive akhirnya Flee ke arah ekstraksi
+            actor.Stats.CurrentHP = 10;
+            var dec10 = hfsm.DecideTurn(actor, _grid, new List<CombatEntity2D> { actor, enemy });
+            Assert.AreEqual(TacticalActionType.Flee, dec10.Action, "Aggressive must execute Flee at <= 10% HP.");
+            Assert.Less(dec10.MoveDestination.x, actor.GridPosition.x, "Flee move destination must retreat towards extraction zone.");
+        }
+
+        [Test]
+        public void TC_2D_17_FleeDestination_DirectlyReachesExtractionZoneWhenClose()
+        {
+            var hfsm = new SimpleTacticalHFSM();
+
+            // Aktor Passive dekat batas ekstraksi di (2, 3) (MoveRange = 3)
+            var actorGo = new GameObject("NearEvacActor");
+            actorGo.transform.SetParent(_holder.transform);
+            var actor = actorGo.AddComponent<CombatEntity2D>();
+            actor.Initialize("act_evac", "Elena", TeamSide.PlayerTeam,
+                new EntityStats(100, 50, 10, 5, 10, 80), "Passive",
+                new Vector2Int(2, 3), "Rifle", 5, 3);
+
+            var enemyGo = new GameObject("Enemy");
+            enemyGo.transform.SetParent(_holder.transform);
+            var enemy = enemyGo.AddComponent<CombatEntity2D>();
+            enemy.Initialize("enm_hound", "Hound", TeamSide.EnemyTeam,
+                new EntityStats(100, 50, 20, 10, 10, 80), "Aggressive",
+                new Vector2Int(12, 3), "Cannon", 6, 2);
+
+            _grid.SetOccupant(actor.GridPosition, actor);
+            _grid.SetOccupant(enemy.GridPosition, enemy);
+
+            actor.Stats.CurrentHP = 25; // <= 30% trigger
+            var decision = hfsm.DecideTurn(actor, _grid, new List<CombatEntity2D> { actor, enemy });
+
+            Assert.AreEqual(TacticalActionType.Flee, decision.Action);
+            Assert.AreEqual(0, decision.MoveDestination.x, "When within move range of extraction (X=0), actor must move directly onto an extraction tile.");
+            Assert.IsTrue(_grid.IsExtractionTile(decision.MoveDestination), "Destination must be an ExtractionZone tile.");
+        }
+
+        [Test]
+        public void TC_2D_18_RationalityShock_ReducesOnAllyFleeAndAllyDeath()
+        {
+            var bmGo = new GameObject("BM_Test");
+            var bm = bmGo.AddComponent<BattleManager2D>();
+            bm.Grid = _grid;
+
+            var ally1Go = new GameObject("Ally1");
+            var ally1 = ally1Go.AddComponent<CombatEntity2D>();
+            ally1.Initialize("a1", "Marcus", TeamSide.PlayerTeam, new EntityStats(100, 50, 20, 10, 10, 100), "Neutral", new Vector2Int(2, 2));
+
+            var ally2Go = new GameObject("Ally2");
+            var ally2 = ally2Go.AddComponent<CombatEntity2D>();
+            ally2.Initialize("a2", "Claire", TeamSide.PlayerTeam, new EntityStats(100, 50, 10, 10, 10, 100), "Passive", new Vector2Int(2, 3));
+
+            bm.InitializeBattle(new List<CombatEntity2D> { ally1, ally2 });
+
+            Assert.AreEqual(100, ally2.Stats.Rationality);
+
+            // Ally fleeing shock: -20% Rationality
+            bm.ApplyMoraleShock(TeamSide.PlayerTeam, 20, "Marcus fleeing");
+            Assert.AreEqual(80, ally2.Stats.Rationality, "Ally fleeing must reduce squad rationality by 20%.");
+
+            // Ally dying shock: -40% Rationality
+            bm.ApplyMoraleShock(TeamSide.PlayerTeam, 40, "Marcus killed");
+            Assert.AreEqual(40, ally2.Stats.Rationality, "Ally dying must reduce squad rationality by 40%.");
+
+            Object.DestroyImmediate(bmGo);
+            Object.DestroyImmediate(ally1Go);
+            Object.DestroyImmediate(ally2Go);
+        }
+
+        [Test]
+        public void TC_2D_19_RationalityTrigger_CausesFleeAtTraitThresholds()
+        {
+            var hfsm = new SimpleTacticalHFSM();
+
+            // Passive actor with full HP (100/100) but low Rationality (30)
+            var claireGo = new GameObject("Claire");
+            claireGo.transform.SetParent(_holder.transform);
+            var claire = claireGo.AddComponent<CombatEntity2D>();
+            claire.Initialize("c", "Claire", TeamSide.PlayerTeam, new EntityStats(100, 50, 10, 5, 10, 31), "Passive", new Vector2Int(4, 4));
+
+            var enemyGo = new GameObject("Enemy");
+            enemyGo.transform.SetParent(_holder.transform);
+            var enemy = enemyGo.AddComponent<CombatEntity2D>();
+            enemy.Initialize("e", "Hound", TeamSide.EnemyTeam, new EntityStats(100, 50, 20, 10, 10, 80), "Aggressive", new Vector2Int(12, 4));
+
+            _grid.SetOccupant(claire.GridPosition, claire);
+            _grid.SetOccupant(enemy.GridPosition, enemy);
+
+            // Pada Rationality 31, belum flee
+            var dec31 = hfsm.DecideTurn(claire, _grid, new List<CombatEntity2D> { claire, enemy });
+            Assert.AreNotEqual(TacticalActionType.Flee, dec31.Action);
+
+            // Pada Rationality 30, Passive mulai Flee meski HP masih 100%!
+            claire.Stats.Rationality = 30;
+            var dec30 = hfsm.DecideTurn(claire, _grid, new List<CombatEntity2D> { claire, enemy });
+            Assert.AreEqual(TacticalActionType.Flee, dec30.Action, "Passive must trigger Flee when Rationality <= 30% even at full HP.");
+        }
+
+        [Test]
+        public void TC_2D_20_GuardSkill_MarcusRedirectsDamageAndRestores10PercentRationality()
+        {
+            var marcusGo = new GameObject("Marcus");
+            marcusGo.transform.SetParent(_holder.transform);
+            var marcus = marcusGo.AddComponent<CombatEntity2D>();
+            marcus.Initialize("u1_marcus", "Marcus (Pointman)", TeamSide.PlayerTeam,
+                new EntityStats(140, 50, 20, 10, 10, 80), "Neutral", new Vector2Int(2, 4));
+
+            var elenaGo = new GameObject("Elena");
+            elenaGo.transform.SetParent(_holder.transform);
+            var elena = elenaGo.AddComponent<CombatEntity2D>();
+            elena.Initialize("u2_elena", "Elena (Sniper)", TeamSide.PlayerTeam,
+                new EntityStats(100, 50, 30, 0, 10, 50), "Passive", new Vector2Int(2, 5));
+
+            _grid.SetOccupant(marcus.GridPosition, marcus);
+            _grid.SetOccupant(elena.GridPosition, elena);
+
+            // Marcus menerapkan Guard pada Elena
+            elena.ApplyGuard(marcus, 2);
+            elena.Stats.RestoreRationality(10);
+
+            Assert.IsTrue(elena.IsGuarded);
+            Assert.AreEqual(60, elena.Stats.Rationality, "Guard must restore +10% Rationality to the protected ally.");
+
+            // Elena diserang dengan rawDamage 30
+            int dealt = elena.ApplyDamage(30, false);
+            Assert.AreEqual(100, elena.Stats.CurrentHP, "Protected ally must take 0 damage while Guard is active.");
+            Assert.IsTrue(elena.LastDamageWasRedirected);
+            Assert.AreEqual(marcus, elena.LastGuardian);
+            Assert.AreEqual(140 - dealt, marcus.Stats.CurrentHP, "Damage must be absorbed entirely by Marcus.");
+        }
+
+        [Test]
+        public void TC_2D_21_HealSkill_ClaireHeals50HPAndRestores10PercentRationality()
+        {
+            var claireGo = new GameObject("Claire");
+            claireGo.transform.SetParent(_holder.transform);
+            var claire = claireGo.AddComponent<CombatEntity2D>();
+            claire.Initialize("u4_claire", "Claire (Medic)", TeamSide.PlayerTeam,
+                new EntityStats(70, 75, 10, 5, 10, 80), "Passive", new Vector2Int(2, 2));
+
+            var tashaGo = new GameObject("Tasha");
+            tashaGo.transform.SetParent(_holder.transform);
+            var tasha = tashaGo.AddComponent<CombatEntity2D>();
+            tasha.Initialize("u3_tasha", "Tasha (Flanker)", TeamSide.PlayerTeam,
+                new EntityStats(100, 50, 20, 10, 10, 40), "Aggressive", new Vector2Int(2, 3));
+
+            _grid.SetOccupant(claire.GridPosition, claire);
+            _grid.SetOccupant(tasha.GridPosition, tasha);
+
+            tasha.Stats.CurrentHP = 20; // 20/100 HP
+
+            // Claire cast Heal
+            tasha.Heal(50);
+            tasha.Stats.RestoreRationality(10);
+
+            Assert.AreEqual(70, tasha.Stats.CurrentHP, "Heal must restore exactly 50 HP.");
+            Assert.AreEqual(50, tasha.Stats.Rationality, "Heal must restore +10% Rationality.");
+        }
+
+        [Test]
+        public void TC_2D_22_FleeAbort_HealAndGuardRestoreAllyAboveThresholdAbortingFlee()
+        {
+            var tashaGo = new GameObject("Tasha");
+            tashaGo.transform.SetParent(_holder.transform);
+            var tasha = tashaGo.AddComponent<CombatEntity2D>();
+            tasha.Initialize("u3_tasha", "Tasha (Flanker)", TeamSide.PlayerTeam,
+                new EntityStats(100, 50, 20, 10, 10, 50), "Aggressive", new Vector2Int(2, 2));
+
+            // Tasha sekarat di 8 HP (<= 10%), memicu status Flee
+            tasha.Stats.CurrentHP = 8;
+            tasha.SetFleeing(true);
+            Assert.IsTrue(tasha.IsFleeing);
+
+            // Claire menyembuhkan Tasha (+50 HP -> 58/100) dan +10% Rationality (60/100)
+            tasha.Heal(50);
+            tasha.Stats.RestoreRationality(10);
+
+            // Periksa abort flee: Ambang agresif adalah 10% (0.10f)
+            bool aborted = tasha.CheckAndApplyFleeAbort(0.10f, 0.10f);
+            Assert.IsTrue(aborted, "Flee command must be aborted when health and composure recover above trait threshold.");
+            Assert.IsFalse(tasha.IsFleeing, "IsFleeing must be reset to false.");
+        }
+
+        [Test]
+        public void TC_2D_23_MoveAndCastSkill_ClosesDistanceWhenDistressedAllyIsOutOfRange()
+        {
+            var hfsm = new SimpleTacticalHFSM();
+
+            // Claire (Heal Range = 2, MoveRange = 3) di (2, 2)
+            var claireGo = new GameObject("Claire");
+            claireGo.transform.SetParent(_holder.transform);
+            var claire = claireGo.AddComponent<CombatEntity2D>();
+            claire.Initialize("u4_claire", "Claire (Medic)", TeamSide.PlayerTeam,
+                new EntityStats(70, 75, 10, 5, 10, 80), "Passive", new Vector2Int(2, 2));
+
+            // Marcus terluka di (2, 6) (Jarak = 4, di luar Range 2 Heal, tapi bisa dijangkau jika Claire bergerak ke y=4)
+            var marcusGo = new GameObject("Marcus");
+            marcusGo.transform.SetParent(_holder.transform);
+            var marcus = marcusGo.AddComponent<CombatEntity2D>();
+            marcus.Initialize("u1_marcus", "Marcus (Pointman)", TeamSide.PlayerTeam,
+                new EntityStats(140, 50, 20, 10, 10, 80), "Neutral", new Vector2Int(2, 6));
+            marcus.Stats.CurrentHP = 30; // 30/140 (< 50% HP -> distress!)
+
+            var enemyGo = new GameObject("Enemy");
+            enemyGo.transform.SetParent(_holder.transform);
+            var enemy = enemyGo.AddComponent<CombatEntity2D>();
+            enemy.Initialize("e", "Drone", TeamSide.EnemyTeam,
+                new EntityStats(80, 20, 15, 5, 10, 80), "Neutral", new Vector2Int(14, 4));
+
+            _grid.SetOccupant(claire.GridPosition, claire);
+            _grid.SetOccupant(marcus.GridPosition, marcus);
+            _grid.SetOccupant(enemy.GridPosition, enemy);
+
+            var decision = hfsm.DecideTurn(claire, _grid, new List<CombatEntity2D> { claire, marcus, enemy });
+
+            Assert.IsNotNull(decision);
+            Assert.AreEqual(TacticalActionType.MoveAndCastSkill, decision.Action,
+                "Claire must execute MoveAndCastSkill when distressed ally is outside cast range but reachable.");
+            Assert.AreEqual(marcus, decision.TargetAlly);
+            Assert.AreEqual("Heal", decision.SkillId);
+            Assert.LessOrEqual(_grid.GetDistance(decision.MoveDestination, marcus.GridPosition), 2,
+                "MoveDestination must place Claire within Heal range (<= 2) of Marcus.");
+        }
+
+        [Test]
+        public void TC_2D_24_PsychologicalImmunity_DoesNotLoseRationalityOnMoraleShock()
+        {
+            var bmGo = new GameObject("BM_ImmuneTest");
+            var bm = bmGo.AddComponent<BattleManager2D>();
+            bm.Grid = _grid;
+
+            var normalGo = new GameObject("HumanSoldier");
+            var normalUnit = normalGo.AddComponent<CombatEntity2D>();
+            normalUnit.Initialize("sol1", "Soldier", TeamSide.EnemyTeam, new EntityStats(100, 50, 15, 5, 10, 100), "Neutral", new Vector2Int(10, 2), immuneToPsychological: false);
+
+            var droneGo = new GameObject("CombatDrone");
+            var droneUnit = droneGo.AddComponent<CombatEntity2D>();
+            droneUnit.Initialize("dr1", "Scout Drone", TeamSide.EnemyTeam, new EntityStats(50, 20, 15, 5, 10, 100), "Neutral", new Vector2Int(10, 3), immuneToPsychological: true);
+
+            bm.InitializeBattle(new List<CombatEntity2D> { normalUnit, droneUnit });
+
+            Assert.IsFalse(normalUnit.IsImmuneToPsychologicalEffects);
+            Assert.IsTrue(droneUnit.IsImmuneToPsychologicalEffects);
+
+            // Terapkan shock moral -40%
+            bm.ApplyMoraleShock(TeamSide.EnemyTeam, 40, "Ally destroyed");
+
+            Assert.AreEqual(60, normalUnit.Stats.Rationality, "Non-immune entity must suffer rationality loss.");
+            Assert.AreEqual(100, droneUnit.Stats.Rationality, "Immune entity (e.g. drone/machine) must NOT lose rationality.");
+
+            Object.DestroyImmediate(bmGo);
+            Object.DestroyImmediate(normalGo);
+            Object.DestroyImmediate(droneGo);
+        }
+
+        [Test]
+        public void TC_2D_25_PsychologicalImmunity_DoesNotFleeFromLowRationality()
+        {
+            var hfsm = new SimpleTacticalHFSM();
+
+            var droneGo = new GameObject("ImmunePassiveDrone");
+            droneGo.transform.SetParent(_holder.transform);
+            var drone = droneGo.AddComponent<CombatEntity2D>();
+            drone.Initialize("dr_passive", "Repair Drone", TeamSide.EnemyTeam,
+                new EntityStats(100, 50, 10, 5, 10, 100), "Passive", new Vector2Int(5, 5),
+                immuneToPsychological: true);
+
+            var enemyGo = new GameObject("PlayerEnemy");
+            enemyGo.transform.SetParent(_holder.transform);
+            var enemy = enemyGo.AddComponent<CombatEntity2D>();
+            enemy.Initialize("u_marcus", "Marcus", TeamSide.PlayerTeam,
+                new EntityStats(100, 50, 20, 10, 10, 100), "Neutral", new Vector2Int(12, 5));
+
+            _grid.SetOccupant(drone.GridPosition, drone);
+            _grid.SetOccupant(enemy.GridPosition, enemy);
+
+            // Turunkan rasionalitas ke level breakdown (10/100, padahal Passive ambangnya 30%)
+            drone.Stats.Rationality = 10;
+            drone.Stats.CurrentHP = 100; // Darah masih penuh
+
+            var decision = hfsm.DecideTurn(drone, _grid, new List<CombatEntity2D> { drone, enemy });
+            Assert.AreNotEqual(TacticalActionType.Flee, decision.Action,
+                "Psychologically immune entity must NOT flee due to low rationality/mental breakdown.");
+
+            // Namun jika HP kritis (<= 30% untuk Passive), unit tetap retret berdasarkan kerusakan fisik
+            drone.Stats.CurrentHP = 25;
+            var decFleeHp = hfsm.DecideTurn(drone, _grid, new List<CombatEntity2D> { drone, enemy });
+            Assert.AreEqual(TacticalActionType.Flee, decFleeHp.Action,
+                "Entity can still flee when physical HP reaches critical retreat threshold.");
+        }
     }
 }

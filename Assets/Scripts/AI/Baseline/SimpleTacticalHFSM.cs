@@ -12,7 +12,10 @@ namespace RPGStrategy.AI.Baseline
         Shoot,
         MoveToCover,
         MoveAndShoot,
-        Defend
+        Defend,
+        Flee,
+        CastSkill,
+        MoveAndCastSkill
     }
 
     [Serializable]
@@ -21,6 +24,8 @@ namespace RPGStrategy.AI.Baseline
         public TacticalActionType Action;
         public Vector2Int MoveDestination;
         public CombatEntity2D TargetEnemy;
+        public CombatEntity2D TargetAlly;
+        public string SkillId;
         public bool IsFlanking;
         public string Reasoning;
 
@@ -29,6 +34,19 @@ namespace RPGStrategy.AI.Baseline
             Action = action;
             MoveDestination = dest;
             TargetEnemy = target;
+            IsFlanking = isFlanking;
+            Reasoning = reason;
+            TargetAlly = null;
+            SkillId = "";
+        }
+
+        public TacticalDecision2D(TacticalActionType action, Vector2Int dest, CombatEntity2D targetEnemy, CombatEntity2D targetAlly, string skillId, bool isFlanking, string reason)
+        {
+            Action = action;
+            MoveDestination = dest;
+            TargetEnemy = targetEnemy;
+            TargetAlly = targetAlly;
+            SkillId = skillId;
             IsFlanking = isFlanking;
             Reasoning = reason;
         }

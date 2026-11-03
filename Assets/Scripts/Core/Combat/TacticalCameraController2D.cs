@@ -1,4 +1,3 @@
-using System.IO;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -117,6 +116,14 @@ namespace RPGStrategy.Core.Combat
         {
             float scroll = 0f;
 
+            // Do not steal scroll events that belong to UI elements (e.g. the combat log ScrollRect).
+            // uGUI's ScrollRect only receives input when the camera does NOT consume it first.
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            {
+                _cam.orthographicSize = Mathf.Lerp(_cam.orthographicSize, _targetZoom, Time.unscaledDeltaTime * 10f);
+                return;
+            }
+
 #if ENABLE_INPUT_SYSTEM
             var mouse = UnityEngine.InputSystem.Mouse.current;
             if (mouse != null)
@@ -133,9 +140,6 @@ namespace RPGStrategy.Core.Combat
 
             if (Mathf.Abs(scroll) > 0.01f)
             {
-                // #region agent log
-                try { bool overUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(); File.AppendAllText(@"C:\Ginza\Github\Metodologi-Penelitian\debug-72c643.log", "{\"sessionId\":\"72c643\",\"hypothesisId\":\"E\",\"location\":\"TacticalCameraController2D.HandleZoomInput\",\"message\":\"camera consumed scroll\",\"data\":{\"scroll\":"+scroll.ToString(System.Globalization.CultureInfo.InvariantCulture)+",\"overUI\":"+(overUI?"true":"false")+"},\"timestamp\":"+System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()+"}\n"); } catch {}
-                // #endregion
                 _targetZoom -= scroll * zoomSpeed * 10f;
                 _targetZoom = Mathf.Clamp(_targetZoom, minZoom, maxZoom);
             }

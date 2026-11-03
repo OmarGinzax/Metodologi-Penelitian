@@ -252,6 +252,12 @@ namespace RPGStrategy.Core.Combat
             return IsInBounds(pos) ? _cells[pos.x, pos.y] : null;
         }
 
+        public bool IsExtractionTile(Vector2Int pos)
+        {
+            var c = GetCell(pos);
+            return c != null && c.Type == CellType.ExtractionZone;
+        }
+
         public void SetCellType(Vector2Int pos, CellType type)
         {
             EnsureGridInitialized();
