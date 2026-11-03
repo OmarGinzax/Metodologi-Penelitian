@@ -16,6 +16,12 @@ namespace RPGStrategy.AI
 
         public abstract string ControllerType { get; }
 
+        /// <summary>
+        /// Tag status keputusan terakhir untuk HUD/telemetri, misalnya
+        /// "[RETRY_RESOLVED]" atau "[HFSM_FALLBACK]". Kosong bila tidak ada tag khusus.
+        /// </summary>
+        public virtual string LastDecisionTag => string.Empty;
+
         public abstract Task<TacticalDecision2D> DecideTurnAsync(
             CombatEntity2D actor,
             TacticalGrid2D grid,

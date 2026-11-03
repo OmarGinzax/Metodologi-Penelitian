@@ -49,6 +49,36 @@ namespace RPGStrategy.AI.Telemetry
         public int OutputTokens;
         public int TotalTokens;
         public string TimestampUtc;
+
+        // ===================================================================
+        // Hybrid architecture detail (RQ2 / Y2 raw vs executed)
+        // ===================================================================
+
+        public bool IsHybrid;
+
+        public string ProposalRound1Action;
+        public string ProposalRound1Target;
+        public string ProposalRound1Destination;
+        public bool ProposalRound1Valid;
+        public string ProposalRound1Violations;
+
+        public bool RetryConducted;
+        public string ProposalRound2Action;
+        public string ProposalRound2Target;
+        public string ProposalRound2Destination;
+        public bool ProposalRound2Valid;
+        public string ProposalRound2Violations;
+
+        public bool FallbackTriggered;
+        public string FallbackReason;
+        public string FinalExecutedAction;
+        public bool FinalExecutedValid;
+
+        public long LatencyLlmAttempt1Ms;
+        public long LatencyLlmAttempt2Ms;
+        public long LatencyValidatorMs;
+        public long LatencyFallbackMs;
+        public long LatencyTotalMs;
     }
 
     /// <summary>
@@ -112,7 +142,18 @@ namespace RPGStrategy.AI.Telemetry
                           "is_valid,violation_code,violation_details," +
                           "final_action,final_target,final_destination,is_fallback," +
                           "parse_succeeded,request_succeeded,llm_error,reasoning,raw_response," +
-                          "latency_ms,input_tokens,output_tokens,total_tokens,timestamp_utc");
+                          "latency_ms,input_tokens,output_tokens,total_tokens," +
+                          "is_hybrid," +
+                          "proposal_round_1_action,proposal_round_1_target,proposal_round_1_destination," +
+                          "proposal_round_1_valid,proposal_round_1_violations," +
+                          "retry_conducted," +
+                          "proposal_round_2_action,proposal_round_2_target,proposal_round_2_destination," +
+                          "proposal_round_2_valid,proposal_round_2_violations," +
+                          "fallback_triggered,fallback_reason," +
+                          "final_executed_action,final_executed_valid," +
+                          "latency_llm_attempt_1_ms,latency_llm_attempt_2_ms," +
+                          "latency_validator_ms,latency_fallback_ms,latency_total_ms," +
+                          "timestamp_utc");
 
             for (int i = 0; i < _records.Count; i++)
             {
@@ -148,6 +189,27 @@ namespace RPGStrategy.AI.Telemetry
                 sb.Append(r.InputTokens.ToString(CultureInfo.InvariantCulture)).Append(',');
                 sb.Append(r.OutputTokens.ToString(CultureInfo.InvariantCulture)).Append(',');
                 sb.Append(r.TotalTokens.ToString(CultureInfo.InvariantCulture)).Append(',');
+                sb.Append(r.IsHybrid ? "TRUE" : "FALSE").Append(',');
+                sb.Append(Quote(r.ProposalRound1Action)).Append(',');
+                sb.Append(Quote(r.ProposalRound1Target)).Append(',');
+                sb.Append(Quote(r.ProposalRound1Destination)).Append(',');
+                sb.Append(r.ProposalRound1Valid ? "TRUE" : "FALSE").Append(',');
+                sb.Append(Quote(r.ProposalRound1Violations)).Append(',');
+                sb.Append(r.RetryConducted ? "TRUE" : "FALSE").Append(',');
+                sb.Append(Quote(r.ProposalRound2Action)).Append(',');
+                sb.Append(Quote(r.ProposalRound2Target)).Append(',');
+                sb.Append(Quote(r.ProposalRound2Destination)).Append(',');
+                sb.Append(r.ProposalRound2Valid ? "TRUE" : "FALSE").Append(',');
+                sb.Append(Quote(r.ProposalRound2Violations)).Append(',');
+                sb.Append(r.FallbackTriggered ? "TRUE" : "FALSE").Append(',');
+                sb.Append(Quote(r.FallbackReason)).Append(',');
+                sb.Append(Quote(r.FinalExecutedAction)).Append(',');
+                sb.Append(r.FinalExecutedValid ? "TRUE" : "FALSE").Append(',');
+                sb.Append(r.LatencyLlmAttempt1Ms.ToString(CultureInfo.InvariantCulture)).Append(',');
+                sb.Append(r.LatencyLlmAttempt2Ms.ToString(CultureInfo.InvariantCulture)).Append(',');
+                sb.Append(r.LatencyValidatorMs.ToString(CultureInfo.InvariantCulture)).Append(',');
+                sb.Append(r.LatencyFallbackMs.ToString(CultureInfo.InvariantCulture)).Append(',');
+                sb.Append(r.LatencyTotalMs.ToString(CultureInfo.InvariantCulture)).Append(',');
                 sb.Append(Quote(r.TimestampUtc));
                 sb.AppendLine();
             }
@@ -214,7 +276,16 @@ namespace RPGStrategy.AI.Telemetry
             int valid = 0;
             int illogical = 0;
             int transportFailures = 0;
+            int rawIllogical = 0;
+            int executedIllogical = 0;
+            int retryCount = 0;
+            int retryResolved = 0;
+            int fallbackCount = 0;
             long latencySum = 0;
+            long totalLatencySum = 0;
+            long attempt1Sum = 0;
+            long validatorSum = 0;
+            long fallbackLatencySum = 0;
             long inputSum = 0;
             long outputSum = 0;
             long totalSum = 0;
@@ -228,7 +299,31 @@ namespace RPGStrategy.AI.Telemetry
                 if (r.IsValid) valid++; else illogical++;
                 if (!r.RequestSucceeded) transportFailures++;
 
+                // Raw Y2 uses round 1 when available, otherwise legacy fields.
+                bool rawValid = !string.IsNullOrEmpty(r.ProposalRound1Action)
+                    ? r.ProposalRound1Valid
+                    : r.IsValid;
+                if (!rawValid) rawIllogical++;
+
+                // Executed Y2 uses the final validated action when available.
+                bool executedValid = !string.IsNullOrEmpty(r.FinalExecutedAction)
+                    ? r.FinalExecutedValid
+                    : r.IsValid;
+                if (!executedValid) executedIllogical++;
+
+                if (r.RetryConducted)
+                {
+                    retryCount++;
+                    if (r.ProposalRound2Valid && !r.FallbackTriggered) retryResolved++;
+                }
+                if (r.FallbackTriggered) fallbackCount++;
+
+                long recordTotalLatency = r.LatencyTotalMs > 0 ? r.LatencyTotalMs : r.LatencyMs;
                 latencySum += r.LatencyMs;
+                totalLatencySum += recordTotalLatency;
+                attempt1Sum += r.LatencyLlmAttempt1Ms;
+                validatorSum += r.LatencyValidatorMs;
+                fallbackLatencySum += r.LatencyFallbackMs;
                 inputSum += r.InputTokens;
                 outputSum += r.OutputTokens;
                 totalSum += r.TotalTokens;
@@ -262,8 +357,29 @@ namespace RPGStrategy.AI.Telemetry
             sb.AppendLine("    \"illogical_decisions\": " + illogical.ToString(CultureInfo.InvariantCulture) + ",");
             sb.AppendLine("    \"illogical_decision_rate_percent_Y2\": " +
                           ((illogical / (double)n) * 100.0).ToString("0.00", CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine("    \"raw_illogical_decisions\": " + rawIllogical.ToString(CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine("    \"raw_illogical_decision_rate_percent_Y2\": " +
+                          ((rawIllogical / (double)n) * 100.0).ToString("0.00", CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine("    \"executed_illogical_decisions\": " + executedIllogical.ToString(CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine("    \"executed_illogical_decision_rate_percent_Y2\": " +
+                          ((executedIllogical / (double)n) * 100.0).ToString("0.00", CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine("    \"retry_count\": " + retryCount.ToString(CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine("    \"retry_rate_percent\": " +
+                          ((retryCount / (double)n) * 100.0).ToString("0.00", CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine("    \"retry_resolved_count\": " + retryResolved.ToString(CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine("    \"fallback_count\": " + fallbackCount.ToString(CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine("    \"fallback_rate_percent\": " +
+                          ((fallbackCount / (double)n) * 100.0).ToString("0.00", CultureInfo.InvariantCulture) + ",");
             sb.AppendLine("    \"avg_latency_ms_Y7\": " +
                           (latencySum / (double)n).ToString("0.00", CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine("    \"avg_latency_total_ms_Y7\": " +
+                          (totalLatencySum / (double)n).ToString("0.00", CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine("    \"avg_latency_llm_attempt_1_ms\": " +
+                          (attempt1Sum / (double)n).ToString("0.00", CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine("    \"avg_latency_validator_ms\": " +
+                          (validatorSum / (double)n).ToString("0.00", CultureInfo.InvariantCulture) + ",");
+            sb.AppendLine("    \"avg_latency_fallback_ms\": " +
+                          (fallbackLatencySum / (double)n).ToString("0.00", CultureInfo.InvariantCulture) + ",");
             sb.AppendLine("    \"avg_input_tokens_Y6\": " +
                           (inputSum / (double)n).ToString("0.00", CultureInfo.InvariantCulture) + ",");
             sb.AppendLine("    \"avg_output_tokens_Y6\": " +

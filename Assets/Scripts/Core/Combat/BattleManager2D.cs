@@ -298,13 +298,18 @@ namespace RPGStrategy.Core.Combat
             }
 
             // Perbarui Telemetri Inspector langsung pada CombatEntity2D!
+            string decisionTag = (_agentController as TacticalAgentControllerBase)?.LastDecisionTag;
+            string actionLabel = string.IsNullOrEmpty(decisionTag)
+                ? decision.Action.ToString()
+                : decisionTag + " " + decision.Action;
+
             _currentActor.SetActionTelemetry(
-                decision.Action.ToString(),
+                actionLabel,
                 decision.Reasoning,
                 decision.TargetEnemy?.EntityId ?? decision.TargetAlly?.EntityId ?? "",
                 decision.MoveDestination);
 
-            AddLog($"[{_agentController.ControllerType}] {_currentActor.EntityName} -> {decision.Action}: {decision.Reasoning}");
+            AddLog($"[{_agentController.ControllerType}] {_currentActor.EntityName} -> {actionLabel}: {decision.Reasoning}");
 
             // Pemicu Morale Shock jika unit memutuskan untuk Flee (pertama kali)
             if (decision.Action == TacticalActionType.Flee && !_fleeShockedEntities.Contains(_currentActor))

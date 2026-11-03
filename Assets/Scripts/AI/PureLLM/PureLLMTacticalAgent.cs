@@ -150,7 +150,7 @@ namespace RPGStrategy.AI.PureLLM
             var parse = TacticalDecisionJsonParser.Parse(response.RawContent);
             LastParse = parse;
 
-            var decision = BuildDecision(parse, actor, grid, combatants);
+            var decision = TacticalDecisionBuilder2D.Build(parse, actor, grid, combatants);
 
             // When parsing fails, append the transport/HTTP cause so the HUD and Console
             // explain *why* the turn became an H5 no-op (e.g. model not found).
@@ -164,96 +164,6 @@ namespace RPGStrategy.AI.PureLLM
                 LogTelemetry(actor, snapshot, decision, parse, response, report);
 
             return decision;
-        }
-
-        private TacticalDecision2D BuildDecision(
-            TacticalDecisionParseResult parse,
-            CombatEntity2D actor,
-            TacticalGrid2D grid,
-            IReadOnlyList<CombatEntity2D> combatants)
-        {
-            if (parse == null || !parse.Success)
-            {
-                string reason = "No-op: LLM output could not be parsed as a valid action JSON.";
-                if (parse != null && !string.IsNullOrEmpty(parse.Error)) reason += " " + parse.Error;
-                return new TacticalDecision2D(
-                    TacticalActionType.Idle, actor.GridPosition, null, false, reason);
-            }
-
-            TacticalActionType action = parse.MappedAction;
-
-            Vector2Int requestedDestination = actor.GridPosition;
-            if (parse.HasDestination && parse.DestinationFieldsValid)
-                requestedDestination = new Vector2Int(parse.DestinationX, parse.DestinationY);
-
-            // Engine hard boundary: out-of-bounds coordinates are clamped, not corrected.
-            Vector2Int clampedDestination = grid != null
-                ? grid.ClampToBounds(requestedDestination)
-                : requestedDestination;
-
-            bool isMovementAction =
-                action == TacticalActionType.Move ||
-                action == TacticalActionType.MoveToCover ||
-                action == TacticalActionType.MoveAndShoot ||
-                action == TacticalActionType.MoveAndCastSkill ||
-                action == TacticalActionType.Flee;
-
-            Vector2Int executionDestination = isMovementAction
-                ? clampedDestination
-                : actor.GridPosition;
-
-            CombatEntity2D resolvedTarget = ResolveTarget(parse.TargetId, combatants);
-            CombatEntity2D targetEnemy = null;
-            CombatEntity2D targetAlly = null;
-            bool isFlanking = false;
-
-            if (action == TacticalActionType.Shoot || action == TacticalActionType.MoveAndShoot)
-            {
-                targetEnemy = resolvedTarget;
-
-                Vector2Int shootPosition = actor.GridPosition;
-                if (action == TacticalActionType.MoveAndShoot)
-                    shootPosition = clampedDestination;
-
-                if (targetEnemy != null && grid != null)
-                    isFlanking = grid.IsFlanked(targetEnemy.GridPosition, shootPosition);
-            }
-            else if (action == TacticalActionType.CastSkill || action == TacticalActionType.MoveAndCastSkill)
-            {
-                targetAlly = resolvedTarget;
-            }
-
-            string skillId = action == TacticalActionType.CastSkill || action == TacticalActionType.MoveAndCastSkill
-                ? TacticalSkillCatalog2D.Normalize(parse.SkillId)
-                : string.Empty;
-
-            string reasoning = string.IsNullOrWhiteSpace(parse.Reasoning)
-                ? "LLM selected " + (parse.RawAction ?? action.ToString()) + " without providing a rationale."
-                : parse.Reasoning;
-
-            return new TacticalDecision2D(
-                action,
-                executionDestination,
-                targetEnemy,
-                targetAlly,
-                skillId,
-                isFlanking,
-                reasoning);
-        }
-
-        private static CombatEntity2D ResolveTarget(string targetId, IReadOnlyList<CombatEntity2D> combatants)
-        {
-            if (string.IsNullOrWhiteSpace(targetId) || combatants == null) return null;
-
-            string wanted = targetId.Trim();
-            for (int i = 0; i < combatants.Count; i++)
-            {
-                var candidate = combatants[i];
-                if (candidate == null) continue;
-                if (string.Equals(candidate.EntityId, wanted, StringComparison.OrdinalIgnoreCase))
-                    return candidate;
-            }
-            return null;
         }
 
         private void LogTelemetry(
@@ -286,6 +196,11 @@ namespace RPGStrategy.AI.PureLLM
                               decision.Action == TacticalActionType.MoveAndCastSkill ||
                               decision.Action == TacticalActionType.Flee;
 
+            bool proposalValid = report == null || !report.IsIllogical;
+            string violationCsv = report != null ? report.ViolationCodesCsv : "NONE";
+            string violationDetails = report != null ? report.Details : string.Empty;
+            long latencyMs = response != null ? response.LatencyMs : 0;
+
             var record = new TurnTelemetryRecord
             {
                 RunId = runId,
@@ -294,6 +209,7 @@ namespace RPGStrategy.AI.PureLLM
                 AgentType = ControllerType,
                 HasValidator = false,
                 IsCompressed = false,
+                IsHybrid = false,
                 ModelName = response != null ? (response.ModelName ?? string.Empty) : string.Empty,
 
                 RoundNumber = snapshot != null ? snapshot.RoundNumber : 0,
@@ -305,9 +221,9 @@ namespace RPGStrategy.AI.PureLLM
                 ProposedAction = proposedAction,
                 ProposedTarget = proposedTarget,
                 ProposedDestination = proposedDestination,
-                IsValid = report == null || !report.IsIllogical,
-                ViolationCode = report != null ? report.ViolationCodesCsv : "NONE",
-                ViolationDetails = report != null ? report.Details : string.Empty,
+                IsValid = proposalValid,
+                ViolationCode = violationCsv,
+                ViolationDetails = violationDetails,
 
                 FinalAction = decision.Action.ToString(),
                 FinalTarget = finalTarget,
@@ -322,7 +238,25 @@ namespace RPGStrategy.AI.PureLLM
                 Reasoning = decision.Reasoning,
                 RawResponse = response != null ? (response.RawContent ?? string.Empty) : string.Empty,
 
-                LatencyMs = response != null ? response.LatencyMs : 0,
+                // Pure LLM has no guardrail: raw proposal == executed action.
+                ProposalRound1Action = proposedAction,
+                ProposalRound1Target = proposedTarget,
+                ProposalRound1Destination = proposedDestination,
+                ProposalRound1Valid = proposalValid,
+                ProposalRound1Violations = violationCsv,
+                RetryConducted = false,
+                FallbackTriggered = false,
+                FallbackReason = string.Empty,
+                FinalExecutedAction = decision.Action.ToString(),
+                FinalExecutedValid = proposalValid,
+
+                LatencyMs = latencyMs,
+                LatencyLlmAttempt1Ms = latencyMs,
+                LatencyLlmAttempt2Ms = 0,
+                LatencyValidatorMs = 0,
+                LatencyFallbackMs = 0,
+                LatencyTotalMs = latencyMs,
+
                 InputTokens = response != null ? response.PromptTokens : 0,
                 OutputTokens = response != null ? response.CompletionTokens : 0,
                 TotalTokens = response != null

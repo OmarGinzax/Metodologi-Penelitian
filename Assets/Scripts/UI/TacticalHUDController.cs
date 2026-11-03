@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using TMPro;
+using RPGStrategy.AI;
 using RPGStrategy.Core.Combat;
 
 namespace RPGStrategy.UI
@@ -287,6 +288,15 @@ namespace RPGStrategy.UI
                 string controller = battleManager.ActiveAgentController != null
                     ? battleManager.ActiveAgentController.ControllerType
                     : "NoController";
+
+                string decisionTag = (battleManager.ActiveAgentController as TacticalAgentControllerBase)?.LastDecisionTag;
+                if (!string.IsNullOrEmpty(decisionTag))
+                {
+                    string colour = decisionTag.Contains("FALLBACK")
+                        ? "#FF8833"
+                        : "#33FF77";
+                    controller += $"  <color={colour}>{decisionTag}</color>";
+                }
 
                 txtRoundInfo.text =
                     string.Format("Round {0}  |  Turn {1}  |  {2}  |  {3}",
