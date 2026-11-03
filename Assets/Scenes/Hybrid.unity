@@ -16616,7 +16616,7 @@ GameObject:
   - component: {fileID: 1323259838}
   - component: {fileID: 1323259839}
   - component: {fileID: 1323259841}
-  - component: {fileID: 1323259840}
+  - component: {fileID: 1323259842}
   m_Layer: 0
   m_Name: _BattleManager2D
   m_TagString: Untagged
@@ -16646,7 +16646,7 @@ MonoBehaviour:
   - {fileID: 1080717216}
   - {fileID: 93934049}
   - {fileID: 17388183}
-  agentController: {fileID: 1323259840}
+  agentController: {fileID: 1323259842}
   telemetryLogger: {fileID: 1323259839}
   autoExportTelemetry: 1
   clearTelemetryOnBattleStart: 1
@@ -16699,26 +16699,6 @@ MonoBehaviour:
   jsonFileName: telemetry_pure_llm_summary.json
   logToConsole: 1
   autoExportOnBattleEnd: 1
---- !u!114 &1323259840
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1323259835}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3b9827cba3d1cdc44a28028c0e0ba8e2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::RPGStrategy.AI.PureLLM.PureLLMTacticalAgent
-  config: {fileID: 11400000, guid: 759ef9f006b8d2b4eb434f723f4f1b78, type: 2}
-  llmService: {fileID: 1323259841}
-  telemetryLogger: {fileID: 1323259839}
-  enableTelemetryLogging: 1
-  runId: RUN_001
-  configId: CFG-02
-  scenarioId: SCEN_LIVE
-  maxRecentLogs: 8
 --- !u!114 &1323259841
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -16734,6 +16714,27 @@ MonoBehaviour:
   config: {fileID: 11400000, guid: 759ef9f006b8d2b4eb434f723f4f1b78, type: 2}
   logRequests: 1
   logResponses: 1
+--- !u!114 &1323259842
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1323259835}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2d20e34fae00f8469fd11207ddfad63, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RPGStrategy.AI.Hybrid.HybridTacticalAgent
+  config: {fileID: 11400000, guid: 759ef9f006b8d2b4eb434f723f4f1b78, type: 2}
+  llmService: {fileID: 1323259841}
+  telemetryLogger: {fileID: 1323259839}
+  enableTelemetryLogging: 1
+  runId: RUN_001
+  configId: CFG-03
+  scenarioId: SCEN_LIVE
+  maxRecentLogs: 8
+  maxRetries: 1
 --- !u!1 &1330057564
 GameObject:
   m_ObjectHideFlags: 0
