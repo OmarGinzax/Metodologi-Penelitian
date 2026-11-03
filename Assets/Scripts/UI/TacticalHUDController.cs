@@ -283,11 +283,18 @@ namespace RPGStrategy.UI
                 txtTitle.text = "SECTOR 7 OVERPASS  TACTICAL HUD";
 
             if (txtRoundInfo != null)
+            {
+                string controller = battleManager.ActiveAgentController != null
+                    ? battleManager.ActiveAgentController.ControllerType
+                    : "NoController";
+
                 txtRoundInfo.text =
-                    string.Format("Round {0}  |  Turn {1}  |  {2}",
+                    string.Format("Round {0}  |  Turn {1}  |  {2}  |  {3}",
                         battleManager.RoundNumber,
                         battleManager.GlobalTurnCounter,
-                        battleManager.Outcome);
+                        battleManager.Outcome,
+                        controller);
+            }
         }
 
         private void RefreshButtons()

@@ -15,7 +15,10 @@ namespace RPGStrategy.AI.Baseline
         Defend,
         Flee,
         CastSkill,
-        MoveAndCastSkill
+        MoveAndCastSkill,
+
+        /// <summary>Pergerakan murni tanpa menembak/menggunakan skill (aksi LLM "Move").</summary>
+        Move
     }
 
     [Serializable]

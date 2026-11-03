@@ -4,15 +4,18 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using UnityEngine;
+using RPGStrategy.AI;
 using RPGStrategy.AI.Baseline;
+using RPGStrategy.AI.Telemetry;
 using RPGStrategy.Demo;
 
 namespace RPGStrategy.Core.Combat
 {
     /// <summary>
     /// Manajer Pertarungan Taktis 2D (Sector 7 Overpass).
-    /// Mengelola inisiatif giliran berbasis kecepatan, memanggil AI Simple HFSM,
-    /// memperbarui telemetri Inspector tiap prajurit, dan memicu efek visual (tracers, floating text).
+    /// Mengelola inisiatif giliran berbasis kecepatan, memanggil controller agen aktif
+    /// (HFSM Baseline / Pure LLM / Hybrid), mengeksekusi keputusan secara langsung,
+    /// memperbarui telemetri Inspector, dan memicu efek visual (tracers, floating text).
     /// </summary>
     public class BattleManager2D : MonoBehaviour
     {
@@ -23,6 +26,15 @@ namespace RPGStrategy.Core.Combat
         [Header("Combatants (4-Person Squad vs Enemies)")]
         [SerializeField] private List<CombatEntity2D> combatants = new List<CombatEntity2D>();
 
+        [Header("AI Agent Controller")]
+        [Tooltip("Kosongkan untuk memakai HFSM baseline. Isi dengan PureLLMTacticalAgent untuk perlakuan Pure LLM.")]
+        [SerializeField] private TacticalAgentControllerBase agentController;
+
+        [Header("Research Telemetry")]
+        [SerializeField] private CombatTelemetryLogger2D telemetryLogger;
+        [SerializeField] private bool autoExportTelemetry = true;
+        [SerializeField] private bool clearTelemetryOnBattleStart = true;
+
         [Header("Simulation State")]
         [SerializeField] private int roundNumber = 1;
         [SerializeField] private int globalTurnCounter = 0;
@@ -30,7 +42,7 @@ namespace RPGStrategy.Core.Combat
         [SerializeField] private bool autoRun = false;
         [SerializeField] private float autoRunInterval = 0.9f;
 
-        private SimpleTacticalHFSM _hfsm = new SimpleTacticalHFSM();
+        private ITacticalAgentController _agentController;
         private Queue<CombatEntity2D> _turnQueue = new Queue<CombatEntity2D>();
         private CombatEntity2D _currentActor;
         private bool _isTurnInProgress = false;
@@ -38,6 +50,7 @@ namespace RPGStrategy.Core.Combat
         private readonly List<string> _combatLogs = new List<string>();
         private readonly HashSet<CombatEntity2D> _fleeShockedEntities = new HashSet<CombatEntity2D>();
         private readonly HashSet<CombatEntity2D> _deathShockedEntities = new HashSet<CombatEntity2D>();
+        private bool _telemetryExported = false;
 
         public TacticalGrid2D Grid { get => grid; set => grid = value; }
         public BattleOutcome Outcome => outcome;
@@ -46,11 +59,30 @@ namespace RPGStrategy.Core.Combat
         public IReadOnlyList<CombatEntity2D> Combatants => combatants;
         public IReadOnlyList<string> CombatLogs => _combatLogs;
         public CombatEntity2D CurrentActor => _currentActor;
+        public ITacticalAgentController ActiveAgentController => _agentController;
+        public CombatTelemetryLogger2D TelemetryLogger => telemetryLogger;
 
         private void Awake()
         {
             if (grid == null) grid = FindFirstObjectByType<TacticalGrid2D>();
             if (fx == null) fx = FindFirstObjectByType<VisualFeedbackFX2D>();
+
+            if (agentController == null)
+                agentController = GetComponent<TacticalAgentControllerBase>();
+            if (agentController == null)
+                agentController = gameObject.AddComponent<HFSMTacticalAgent>();
+
+            _agentController = agentController;
+
+            if (telemetryLogger == null)
+                telemetryLogger = FindFirstObjectByType<CombatTelemetryLogger2D>();
+        }
+
+        /// <summary>Mengganti controller agen aktif pada runtime (HFSM / Pure LLM / Hybrid).</summary>
+        public void SetAgentController(ITacticalAgentController controller)
+        {
+            _agentController = controller;
+            agentController = controller as TacticalAgentControllerBase;
         }
 
         private void Start()
@@ -81,6 +113,10 @@ namespace RPGStrategy.Core.Combat
             _fleeShockedEntities.Clear();
             _deathShockedEntities.Clear();
             _isTurnInProgress = false;
+            _telemetryExported = false;
+
+            if (clearTelemetryOnBattleStart && telemetryLogger != null)
+                telemetryLogger.Clear();
 
             // Pastikan setiap combatant terdaftar di grid
             if (grid != null)
@@ -201,15 +237,74 @@ namespace RPGStrategy.Core.Combat
             var nearestEnemy = enemies.OrderBy(e => grid.GetDistance(_currentActor.GridPosition, e.GridPosition)).FirstOrDefault();
             _currentActor.UpdateCoverStatus(grid, nearestEnemy);
 
-            // 2. Minta keputusan AI Simple HFSM
-            var decision = _hfsm.DecideTurn(_currentActor, grid, combatants);
+            // 2. Minta keputusan dari controller agen aktif (HFSM / Pure LLM / Hybrid).
+            //    Panggilan asinkron agar inferensi LLM tidak membekukan main thread Unity.
+            if (_agentController == null)
+            {
+                if (agentController == null) agentController = gameObject.AddComponent<HFSMTacticalAgent>();
+                _agentController = agentController;
+            }
+
+            _agentController.TurnContext = new TacticalTurnContext(roundNumber, globalTurnCounter);
+
+            Task<TacticalDecision2D> decisionTask = null;
+            try
+            {
+                decisionTask = _agentController.DecideTurnAsync(
+                    _currentActor, grid, combatants, _combatLogs);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[BattleManager2D] Agent controller threw synchronously: {ex}");
+            }
+
+            if (decisionTask != null)
+            {
+                while (!decisionTask.IsCompleted)
+                    yield return null;
+            }
+
+            TacticalDecision2D decision;
+            if (decisionTask == null || decisionTask.IsFaulted || decisionTask.IsCanceled)
+            {
+                string error = decisionTask == null
+                    ? "controller returned null task"
+                    : (decisionTask.Exception != null
+                        ? decisionTask.Exception.GetBaseException().Message
+                        : "task cancelled");
+
+                Debug.LogError($"[BattleManager2D] Agent decision failed: {error}");
+                AddLog($"[AI ERROR] {_currentActor.EntityName}: decision pipeline failed ({error}). Turn treated as Idle no-op.");
+                decision = new TacticalDecision2D(
+                    TacticalActionType.Idle,
+                    _currentActor.GridPosition,
+                    null,
+                    false,
+                    "Infrastructure error: " + error);
+            }
+            else
+            {
+                decision = decisionTask.Result;
+            }
+
+            if (decision == null)
+            {
+                decision = new TacticalDecision2D(
+                    TacticalActionType.Idle,
+                    _currentActor.GridPosition,
+                    null,
+                    false,
+                    "Agent returned a null decision.");
+            }
 
             // Perbarui Telemetri Inspector langsung pada CombatEntity2D!
             _currentActor.SetActionTelemetry(
-                decision.Action.ToString(), 
-                decision.Reasoning, 
-                decision.TargetEnemy?.EntityId ?? decision.TargetAlly?.EntityId ?? "", 
+                decision.Action.ToString(),
+                decision.Reasoning,
+                decision.TargetEnemy?.EntityId ?? decision.TargetAlly?.EntityId ?? "",
                 decision.MoveDestination);
+
+            AddLog($"[{_agentController.ControllerType}] {_currentActor.EntityName} -> {decision.Action}: {decision.Reasoning}");
 
             // Pemicu Morale Shock jika unit memutuskan untuk Flee (pertama kali)
             if (decision.Action == TacticalActionType.Flee && !_fleeShockedEntities.Contains(_currentActor))
@@ -218,8 +313,9 @@ namespace RPGStrategy.Core.Combat
                 ApplyMoraleShock(_currentActor.Team, 20, $"{_currentActor.EntityName} fleeing");
             }
 
-            // 3. Eksekusi Pergerakan jika ada (MoveToCover, MoveAndShoot, Flee, MoveAndCastSkill)
-            if (decision.Action == TacticalActionType.MoveToCover || 
+            // 3. Eksekusi Pergerakan jika ada (Move, MoveToCover, MoveAndShoot, Flee, MoveAndCastSkill)
+            if (decision.Action == TacticalActionType.Move ||
+                decision.Action == TacticalActionType.MoveToCover || 
                 decision.Action == TacticalActionType.MoveAndShoot || 
                 decision.Action == TacticalActionType.Flee ||
                 decision.Action == TacticalActionType.MoveAndCastSkill)
@@ -265,8 +361,11 @@ namespace RPGStrategy.Core.Combat
             if (decision.Action == TacticalActionType.Shoot || decision.Action == TacticalActionType.MoveAndShoot)
             {
                 var target = decision.TargetEnemy;
-                if (target != null && target.IsAlive)
+                if (target != null)
                 {
+                    // Pure LLM direct execution: tembakan ke target mati tetap dipanggil.
+                    // ApplyDamage mengembalikan 0 untuk target mati; pelanggaran dicatat classifier.
+                    bool targetWasAlive = target.IsAlive;
                     bool isBurst = _currentActor.WeaponName.Contains("Vector");
                     Vector3 shooterPos = grid.GridToWorld(_currentActor.GridPosition);
                     Vector3 targetPos = grid.GridToWorld(target.GridPosition);
@@ -317,20 +416,34 @@ namespace RPGStrategy.Core.Combat
                     {
                         if (fx != null)
                         {
-                            string popup = decision.IsFlanking ? $"CRIT! -{dealtDmg}" : $"-{dealtDmg}";
-                            Color txtCol = decision.IsFlanking ? new Color(1f, 0.85f, 0.1f) : new Color(0.95f, 0.25f, 0.2f);
-                            if (!decision.IsFlanking && target.ActiveCoverType != CoverType.None)
+                            if (!targetWasAlive)
                             {
-                                popup = $"COVER -{dealtDmg}";
-                                txtCol = new Color(0.6f, 0.75f, 0.95f);
+                                fx.SpawnFloatingText(targetPos, "NO EFFECT (DEAD TARGET)", new Color(0.7f, 0.7f, 0.7f));
                             }
-                            fx.SpawnFloatingText(targetPos, popup, txtCol);
+                            else
+                            {
+                                string popup = decision.IsFlanking ? $"CRIT! -{dealtDmg}" : $"-{dealtDmg}";
+                                Color txtCol = decision.IsFlanking ? new Color(1f, 0.85f, 0.1f) : new Color(0.95f, 0.25f, 0.2f);
+                                if (!decision.IsFlanking && target.ActiveCoverType != CoverType.None)
+                                {
+                                    popup = $"COVER -{dealtDmg}";
+                                    txtCol = new Color(0.6f, 0.75f, 0.95f);
+                                }
+                                fx.SpawnFloatingText(targetPos, popup, txtCol);
+                            }
                         }
 
                         string flankTag = decision.IsFlanking ? " [FLANK CRITICAL!]" : "";
-                        AddLog($"{_currentActor.EntityName} fired {_currentActor.WeaponName} at {target.EntityName} dealing {dealtDmg} dmg{flankTag}.");
+                        if (!targetWasAlive)
+                        {
+                            AddLog($"[INVALID TARGET] {_currentActor.EntityName} fired at already-dead {target.EntityName} (no damage).");
+                        }
+                        else
+                        {
+                            AddLog($"{_currentActor.EntityName} fired {_currentActor.WeaponName} at {target.EntityName} dealing {dealtDmg} dmg{flankTag}.");
+                        }
 
-                        if (!target.IsAlive)
+                        if (targetWasAlive && !target.IsAlive)
                         {
                             AddLog($"[ELIMINATED] {target.EntityName} was destroyed!");
                             grid.ClearOccupant(target.GridPosition);
@@ -346,12 +459,16 @@ namespace RPGStrategy.Core.Combat
             else if (decision.Action == TacticalActionType.CastSkill || decision.Action == TacticalActionType.MoveAndCastSkill)
             {
                 var allyTarget = decision.TargetAlly;
-                if (allyTarget != null && allyTarget.IsAlive)
+                if (allyTarget != null)
                 {
+                    // Direct execution: skill pada target mati / musuh tetap dicoba apa adanya.
+                    bool targetWasAlive = allyTarget.IsAlive;
+                    string skillId = decision.SkillId ?? string.Empty;
+
                     Vector3 casterPos = grid.GridToWorld(_currentActor.GridPosition);
                     Vector3 targetPos = grid.GridToWorld(allyTarget.GridPosition);
 
-                    if (decision.SkillId == "Guard")
+                    if (string.Equals(skillId, "Guard", StringComparison.OrdinalIgnoreCase))
                     {
                         _currentActor.PutSkillOnCooldown(2);
                         allyTarget.ApplyGuard(_currentActor, 2);
@@ -363,9 +480,12 @@ namespace RPGStrategy.Core.Combat
                             fx.PlayBulletTracer(casterPos, targetPos, false, null);
                         }
 
-                        AddLog($"[SKILL: GUARD] {_currentActor.EntityName} cast Guard on {allyTarget.EntityName}! (Damage redirected for 2 turns, +10% Rationality).");
+                        if (targetWasAlive)
+                            AddLog($"[SKILL: GUARD] {_currentActor.EntityName} cast Guard on {allyTarget.EntityName}! (Damage redirected for 2 turns, +10% Rationality).");
+                        else
+                            AddLog($"[INVALID TARGET] {_currentActor.EntityName} attempted Guard on already-dead {allyTarget.EntityName}.");
                     }
-                    else if (decision.SkillId == "Heal")
+                    else if (string.Equals(skillId, "Heal", StringComparison.OrdinalIgnoreCase))
                     {
                         _currentActor.PutSkillOnCooldown(2);
                         allyTarget.Heal(50);
@@ -377,16 +497,26 @@ namespace RPGStrategy.Core.Combat
                             fx.PlayBulletTracer(casterPos, targetPos, false, null);
                         }
 
-                        AddLog($"[SKILL: HEAL] {_currentActor.EntityName} healed {allyTarget.EntityName} (+50 HP, +10% Rationality)!");
+                        if (targetWasAlive)
+                            AddLog($"[SKILL: HEAL] {_currentActor.EntityName} healed {allyTarget.EntityName} (+50 HP, +10% Rationality)!");
+                        else
+                            AddLog($"[INVALID TARGET] {_currentActor.EntityName} attempted Heal on already-dead {allyTarget.EntityName}.");
+                    }
+                    else
+                    {
+                        AddLog($"[SKILL: UNKNOWN] {_currentActor.EntityName} attempted to cast '{skillId}' on {allyTarget.EntityName} (no engine effect).");
                     }
 
                     // Cek apakah flee command pada target ter-abort karena pemulihan HP & Rationality
-                    var allyTrait = TacticalTraitFactory.GetTrait(allyTarget.CurrentTraitId);
-                    if (allyTarget.CheckAndApplyFleeAbort(allyTrait.FleeHpThreshold, allyTrait.FleeHpThreshold))
+                    if (targetWasAlive)
                     {
-                        _fleeShockedEntities.Remove(allyTarget);
-                        AddLog($"[RALLY] {allyTarget.EntityName}'s health and composure were restored above threshold! Flee command aborted.");
-                        if (fx != null) fx.SpawnFloatingText(targetPos, "RALLIED!", Color.green);
+                        var allyTrait = TacticalTraitFactory.GetTrait(allyTarget.CurrentTraitId);
+                        if (allyTarget.CheckAndApplyFleeAbort(allyTrait.FleeHpThreshold, allyTrait.FleeHpThreshold))
+                        {
+                            _fleeShockedEntities.Remove(allyTarget);
+                            AddLog($"[RALLY] {allyTarget.EntityName}'s health and composure were restored above threshold! Flee command aborted.");
+                            if (fx != null) fx.SpawnFloatingText(targetPos, "RALLIED!", Color.green);
+                        }
                     }
                 }
             }
@@ -416,6 +546,12 @@ namespace RPGStrategy.Core.Combat
                     Vector3 actorPos = grid.GridToWorld(_currentActor.GridPosition);
                     if (fx != null) fx.SpawnFloatingText(actorPos, "FLEEING!", new Color(1f, 0.65f, 0.2f));
                 }
+            }
+            else if (decision.Action == TacticalActionType.Idle)
+            {
+                Vector3 actorPos = grid.GridToWorld(_currentActor.GridPosition);
+                if (fx != null) fx.SpawnFloatingText(actorPos, "IDLE / NO-OP", new Color(0.65f, 0.65f, 0.7f));
+                AddLog($"{_currentActor.EntityName} passed the turn (Idle / no-op).");
             }
 
             yield return new WaitForSeconds(0.12f);
@@ -457,6 +593,35 @@ namespace RPGStrategy.Core.Combat
                     AddLog("=== DEFEAT: Squad wiped out on Sector 7 Overpass. ===");
                 }
             }
+
+            TryAutoExportTelemetry();
+        }
+
+        private CombatTelemetryLogger2D ResolveTelemetryLogger()
+        {
+            if (telemetryLogger == null)
+                telemetryLogger = FindFirstObjectByType<CombatTelemetryLogger2D>();
+            return telemetryLogger;
+        }
+
+        private void TryAutoExportTelemetry()
+        {
+            if (!autoExportTelemetry || _telemetryExported) return;
+            if (outcome == BattleOutcome.InProgress) return;
+
+            var logger = ResolveTelemetryLogger();
+            if (logger == null || logger.Records.Count == 0) return;
+
+            _telemetryExported = true;
+            logger.ExportToCsv();
+            logger.ExportToJson();
+        }
+
+        /// <summary>Ekspor manual telemetri (dapat dipanggil dari HUD/editor).</summary>
+        public void ExportTelemetryNow()
+        {
+            var logger = ResolveTelemetryLogger();
+            if (logger != null) logger.ExportAll();
         }
 
         public void AddLog(string msg)

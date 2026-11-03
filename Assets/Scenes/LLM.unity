@@ -378,6 +378,12 @@ MonoBehaviour:
   activeCoverType: 0
   isFlanked: 1
   isDefending: 0
+  isFleeing: 0
+  isExtracted: 0
+  guardedBy: {fileID: 0}
+  guardTurnsRemaining: 0
+  skillCooldownTurns: 0
+  isImmuneToPsychologicalEffects: 0
   stats:
     maxHP: 50
     currentHP: 50
@@ -1037,6 +1043,12 @@ MonoBehaviour:
   activeCoverType: 1
   isFlanked: 0
   isDefending: 0
+  isFleeing: 0
+  isExtracted: 0
+  guardedBy: {fileID: 0}
+  guardTurnsRemaining: 0
+  skillCooldownTurns: 0
+  isImmuneToPsychologicalEffects: 0
   stats:
     maxHP: 70
     currentHP: 70
@@ -1598,6 +1610,12 @@ MonoBehaviour:
   activeCoverType: 0
   isFlanked: 1
   isDefending: 0
+  isFleeing: 0
+  isExtracted: 0
+  guardedBy: {fileID: 0}
+  guardTurnsRemaining: 0
+  skillCooldownTurns: 0
+  isImmuneToPsychologicalEffects: 0
   stats:
     maxHP: 50
     currentHP: 50
@@ -4788,6 +4806,12 @@ MonoBehaviour:
   activeCoverType: 0
   isFlanked: 1
   isDefending: 0
+  isFleeing: 0
+  isExtracted: 0
+  guardedBy: {fileID: 0}
+  guardTurnsRemaining: 0
+  skillCooldownTurns: 0
+  isImmuneToPsychologicalEffects: 0
   stats:
     maxHP: 75
     currentHP: 75
@@ -9525,6 +9549,12 @@ MonoBehaviour:
   activeCoverType: 1
   isFlanked: 0
   isDefending: 0
+  isFleeing: 0
+  isExtracted: 0
+  guardedBy: {fileID: 0}
+  guardTurnsRemaining: 0
+  skillCooldownTurns: 0
+  isImmuneToPsychologicalEffects: 0
   stats:
     maxHP: 140
     currentHP: 140
@@ -14250,6 +14280,12 @@ MonoBehaviour:
   activeCoverType: 0
   isFlanked: 1
   isDefending: 0
+  isFleeing: 0
+  isExtracted: 0
+  guardedBy: {fileID: 0}
+  guardTurnsRemaining: 0
+  skillCooldownTurns: 0
+  isImmuneToPsychologicalEffects: 0
   stats:
     maxHP: 280
     currentHP: 280
@@ -16578,6 +16614,9 @@ GameObject:
   - component: {fileID: 1323259837}
   - component: {fileID: 1323259836}
   - component: {fileID: 1323259838}
+  - component: {fileID: 1323259839}
+  - component: {fileID: 1323259841}
+  - component: {fileID: 1323259840}
   m_Layer: 0
   m_Name: _BattleManager2D
   m_TagString: Untagged
@@ -16607,6 +16646,10 @@ MonoBehaviour:
   - {fileID: 1080717216}
   - {fileID: 93934049}
   - {fileID: 17388183}
+  agentController: {fileID: 1323259840}
+  telemetryLogger: {fileID: 1323259839}
+  autoExportTelemetry: 1
+  clearTelemetryOnBattleStart: 1
   roundNumber: 1
   globalTurnCounter: 0
   outcome: 0
@@ -16639,6 +16682,58 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fe2865b75a6e3c84fab8b4216d7f4796, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RPGStrategy.Demo.VisualFeedbackFX2D
+--- !u!114 &1323259839
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1323259835}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c6fdfdbb534b8e04396834b1f72ee02f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RPGStrategy.AI.Telemetry.CombatTelemetryLogger2D
+  outputDirectory: Logs
+  csvFileName: telemetry_pure_llm.csv
+  jsonFileName: telemetry_pure_llm_summary.json
+  logToConsole: 1
+  autoExportOnBattleEnd: 1
+--- !u!114 &1323259840
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1323259835}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3b9827cba3d1cdc44a28028c0e0ba8e2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RPGStrategy.AI.PureLLM.PureLLMTacticalAgent
+  config: {fileID: 11400000, guid: 759ef9f006b8d2b4eb434f723f4f1b78, type: 2}
+  llmService: {fileID: 1323259841}
+  telemetryLogger: {fileID: 1323259839}
+  enableTelemetryLogging: 1
+  runId: RUN_001
+  configId: CFG-02
+  scenarioId: SCEN_LIVE
+  maxRecentLogs: 8
+--- !u!114 &1323259841
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1323259835}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 082805cf4374426409576290df7fd53a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RPGStrategy.AI.LLM.LLMService2D
+  config: {fileID: 11400000, guid: 759ef9f006b8d2b4eb434f723f4f1b78, type: 2}
+  logRequests: 1
+  logResponses: 1
 --- !u!1 &1330057564
 GameObject:
   m_ObjectHideFlags: 0
@@ -21558,6 +21653,12 @@ MonoBehaviour:
   activeCoverType: 1
   isFlanked: 0
   isDefending: 0
+  isFleeing: 0
+  isExtracted: 0
+  guardedBy: {fileID: 0}
+  guardTurnsRemaining: 0
+  skillCooldownTurns: 0
+  isImmuneToPsychologicalEffects: 0
   stats:
     maxHP: 90
     currentHP: 90
